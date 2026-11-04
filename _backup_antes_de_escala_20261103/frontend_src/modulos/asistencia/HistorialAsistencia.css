@@ -1,0 +1,339 @@
+/* ============================================
+   HistorialAsistencia.jsx - Historial por curso o alumno
+   ============================================ */
+
+/* ---------- Contenedor ---------- */
+.hist-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* ---------- Tarjeta de filtros ---------- */
+.hist-filters-card {
+  background-color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-6);
+}
+
+.hist-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3);
+}
+
+.hist-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--gray-500);
+  margin-bottom: var(--sp-1);
+}
+
+/* ---------- Segmented (curso / alumno) ---------- */
+.hist-segmented {
+  display: flex;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--gray-200);
+  overflow: hidden;
+}
+
+.hist-seg-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out), text-decoration-color 150ms var(--ease-in-out),
+    fill 150ms var(--ease-in-out), stroke 150ms var(--ease-in-out), opacity 150ms var(--ease-in-out),
+    box-shadow 150ms var(--ease-in-out), transform 150ms var(--ease-in-out),
+    filter 150ms var(--ease-in-out), backdrop-filter 150ms var(--ease-in-out);
+}
+
+.hist-seg-btn-active {
+  background-color: var(--blue-600);
+  color: #ffffff;
+}
+
+.hist-seg-btn-inactive {
+  background-color: #ffffff;
+  color: var(--gray-600);
+}
+
+.hist-seg-btn-inactive:hover {
+  background-color: var(--gray-50);
+}
+
+.hist-seg-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- Inputs ---------- */
+.hist-input-alumno {
+  height: 42px;
+  padding: var(--sp-2) var(--sp-3);
+  width: var(--sp-56);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--gray-200);
+  background-color: #ffffff;
+  font-size: var(--text-sm);
+  color: var(--gray-700);
+  outline: none;
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out), text-decoration-color 150ms var(--ease-in-out),
+    fill 150ms var(--ease-in-out), stroke 150ms var(--ease-in-out), opacity 150ms var(--ease-in-out),
+    box-shadow 150ms var(--ease-in-out), transform 150ms var(--ease-in-out),
+    filter 150ms var(--ease-in-out), backdrop-filter 150ms var(--ease-in-out);
+}
+
+.hist-input-alumno:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--blue-500);
+  border-color: transparent;
+}
+
+.hist-input-date {
+  height: 42px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--gray-200);
+  font-size: var(--text-sm);
+  color: var(--gray-700);
+  outline: none;
+}
+
+.hist-input-date:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--blue-500);
+  border-color: transparent;
+}
+
+/* ---------- Botón buscar ---------- */
+.hist-btn-search {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  background-color: var(--blue-600);
+  color: #ffffff;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition: background-color 150ms var(--ease-in-out);
+  cursor: pointer;
+}
+
+.hist-btn-search:hover {
+  background-color: var(--blue-700);
+}
+
+.hist-btn-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- Estado de carga / error ---------- */
+.hist-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: var(--sp-10);
+  padding-bottom: var(--sp-10);
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+  gap: var(--sp-2);
+}
+
+.hist-loading-icon {
+  width: 16px;
+  height: 16px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.hist-error {
+  font-size: var(--text-sm);
+  color: var(--red-600);
+  background-color: var(--red-50);
+  border: 1px solid var(--red-200);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+/* ---------- Tarjetas de contexto ---------- */
+.hist-alumno-card {
+  background-color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  padding: var(--sp-3) var(--sp-4);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.hist-alumno-avatar {
+  width: 32px;
+  height: 32px;
+  color: var(--blue-600);
+}
+
+.hist-alumno-name,
+.hist-curso-name {
+  font-weight: 600;
+  color: var(--gray-800);
+}
+
+.hist-alumno-sub,
+.hist-curso-sub {
+  font-size: var(--text-xs);
+  color: var(--gray-500);
+}
+
+.hist-curso-card {
+  background-color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+/* ---------- Tablas ---------- */
+.hist-table-card {
+  background-color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  overflow: hidden;
+}
+
+.hist-table-title {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--gray-100);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--gray-700);
+}
+
+.hist-table-wrap {
+  overflow-x: auto;
+}
+
+.hist-table {
+  min-width: 100%;
+  font-size: var(--text-sm);
+}
+
+.hist-thead-row {
+  background-color: var(--gray-50);
+  color: var(--gray-600);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  box-shadow: var(--shadow-sm);
+}
+
+.hist-th {
+  padding: var(--sp-3) var(--sp-4);
+  font-weight: 600;
+}
+
+.hist-row {
+  border-bottom: 1px solid var(--gray-100);
+  transition: background-color 150ms var(--ease-in-out);
+}
+
+.hist-row:hover {
+  background-color: rgba(239, 246, 255, 0.7);
+}
+
+.hist-td {
+  padding: var(--sp-2-5) var(--sp-4);
+}
+
+.hist-td-medium {
+  font-weight: 500;
+}
+
+.hist-td-muted {
+  color: var(--gray-500);
+}
+
+.hist-td-green {
+  color: var(--green-600);
+}
+
+.hist-td-red {
+  color: var(--red-600);
+}
+
+.hist-td-amber {
+  color: var(--amber-600);
+}
+
+.hist-td-blue {
+  color: var(--blue-600);
+}
+
+.hist-empty-row {
+  padding: var(--sp-8) var(--sp-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--gray-400);
+}
+
+/* ---------- Resumen ---------- */
+.hist-resumen-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+@media (min-width: 768px) {
+  .hist-resumen-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .hist-resumen-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.hist-resumen-card {
+  background-color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.hist-resumen-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--gray-500);
+  font-weight: 600;
+}
+
+.hist-resumen-value {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--gray-800);
+}

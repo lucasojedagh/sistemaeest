@@ -1,0 +1,19 @@
+# Dependencias y generados
+node_modules/
+frontend/dist/
+frontend/.vite/
+backend/vendor/
+backend/node_modules/
+
+# Laravel
+backend/.env
+backend/storage/*.key
+backend/public/hot
+backend/public/storage
+
+# Backups generados por los scripts (sí se versiona la carpeta backups/, no su contenido)
+backups/*.sql
+
+# Sistema
+.DS_Store
+Thumbs.db

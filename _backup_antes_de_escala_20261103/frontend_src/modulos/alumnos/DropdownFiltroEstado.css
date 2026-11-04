@@ -1,0 +1,92 @@
+/* ============================================
+   DropdownFiltroEstado.jsx - Filtro por estado
+   ============================================ */
+
+.dropdown-estado-prof-wrap {
+  position: relative;
+}
+
+.dropdown-estado-prof-trigger {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+  text-align: left;
+  color: var(--gray-700);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  position: relative;
+  transition: color 200ms var(--ease-in-out), background-color 200ms var(--ease-in-out),
+    border-color 200ms var(--ease-in-out), box-shadow 200ms var(--ease-in-out);
+}
+
+.dropdown-estado-prof-trigger:hover {
+  background-color: var(--blue-50);
+  color: var(--blue-700);
+}
+
+.dropdown-estado-prof-trigger:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--blue-500);
+  border-color: transparent;
+}
+
+.dropdown-estado-prof-trigger-open {
+  background-color: var(--blue-50);
+  color: var(--blue-700);
+  box-shadow: 0 0 0 2px var(--blue-500);
+}
+
+.dropdown-estado-prof-chevron {
+  position: absolute;
+  right: var(--sp-4);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* Opacidad de entrada por CSS: con initial={{opacity:0}} de Framer el valor en
+   reposo queda inline en 0 y hay un frame transparente al terminar la animacion. */
+@keyframes dropdown-estado-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.dropdown-estado-prof-panel {
+  position: absolute;
+  left: 0;
+  margin-top: var(--sp-1);
+  width: 100%;
+  z-index: 50;
+  background-color: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--gray-100);
+  max-height: 224px;
+  overflow-y: auto;
+  transform-origin: top;
+  animation: dropdown-estado-in 200ms ease-out backwards;
+}
+
+.dropdown-estado-prof-option {
+  padding: var(--sp-2) var(--sp-4);
+  cursor: pointer;
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out);
+}
+
+.dropdown-estado-prof-option:hover {
+  background-color: var(--blue-50);
+}
+
+.dropdown-estado-prof-option-first {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.dropdown-estado-prof-option-active {
+  background-color: var(--blue-100);
+  color: var(--blue-700);
+  font-weight: 600;
+}

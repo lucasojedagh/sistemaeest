@@ -1,0 +1,887 @@
+/* ============================================
+   AlumnoDetalle.jsx - Modal de edición / ficha del alumno
+   ============================================ */
+
+/* ---------- Backdrop ---------- */
+@keyframes alumno-detalle-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes alumno-detalle-panel-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes alumno-detalle-backdrop-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes alumno-detalle-panel-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(8px) scale(0.97); }
+}
+
+.alumno-detalle-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background-image: radial-gradient(ellipse at center, rgba(15, 23, 42, 0.55), rgba(15, 23, 42, 0.3));
+  /* Animacion CSS pura: evita el salto de opacidad que deja Framer Motion
+     al terminar la animacion (el modal "desaparecia" un frame). */
+  animation: alumno-detalle-backdrop-in 200ms ease-out both;
+  /* Sin backdrop-filter: animar la opacidad de un fondo con blur provoca
+     parpadeos/duplicados en Chrome. El blur se mantiene solo en el contenedor. */
+}
+
+/* ---------- Contenedor ---------- */
+.alumno-detalle-container {
+  width: 100%;
+  max-width: 612px;
+  max-height: calc(100vh - 100px);
+  max-height: calc(100dvh - 100px);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-3xl);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  animation: alumno-detalle-panel-in 240ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* ---------- Animacion de cierre ---------- */
+.alumno-detalle-backdrop.is-closing {
+  animation: alumno-detalle-backdrop-out 180ms ease-in both;
+}
+
+.alumno-detalle-container.is-closing {
+  animation: alumno-detalle-panel-out 180ms cubic-bezier(0.4, 0, 0.6, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alumno-detalle-backdrop,
+  .alumno-detalle-container,
+  .alumno-detalle-backdrop.is-closing,
+  .alumno-detalle-container.is-closing {
+    animation: none;
+  }
+}
+
+/* ---------- Halos ambientales ---------- */
+.alumno-detalle-halo {
+  pointer-events: none;
+  position: absolute;
+  width: 224px;
+  height: 224px;
+  border-radius: var(--radius-full);
+  filter: blur(64px);
+}
+
+.alumno-detalle-halo-emerald {
+  top: -96px;
+  right: -96px;
+  background-color: rgba(167, 243, 208, 0.3);
+}
+
+.alumno-detalle-halo-teal {
+  bottom: -96px;
+  left: -96px;
+  background-color: rgba(153, 246, 228, 0.3);
+}
+
+/* ---------- Botón de cierre ---------- */
+.alumno-detalle-close {
+  position: absolute;
+  top: var(--sp-4);
+  right: var(--sp-4);
+  z-index: 50;
+  display: flex;
+  height: 36px;
+  width: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xl);
+  border: 1px solid transparent;
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: color 200ms var(--ease-in-out), background-color 200ms var(--ease-in-out),
+    border-color 200ms var(--ease-in-out), box-shadow 200ms var(--ease-in-out),
+    opacity 200ms var(--ease-in-out), transform 200ms var(--ease-in-out);
+}
+
+.alumno-detalle-close:hover {
+  border-color: var(--gray-300);
+  background-color: rgba(229, 231, 235, 0.8);
+  color: var(--gray-700);
+}
+
+/* ---------- Header ---------- */
+.alumno-detalle-hero {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.alumno-detalle-header {
+  padding: var(--sp-6);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+.alumno-detalle-header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.alumno-detalle-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-2xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.alumno-detalle-avatar-f {
+  background-color: #fce7f3;
+  color: #db2777;
+}
+
+.alumno-detalle-avatar-m {
+  background-color: var(--blue-100);
+  color: var(--blue-600);
+}
+
+.alumno-detalle-avatar-o {
+  background-color: var(--gray-100);
+  color: var(--gray-600);
+}
+
+.alumno-detalle-title {
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--gray-900);
+  line-height: 1.375;
+}
+
+.alumno-detalle-subtitle {
+  font-size: var(--text-xs);
+  color: var(--gray-500);
+  margin-top: 2px;
+}
+
+/* ---------- Cuerpo ---------- */
+.alumno-detalle-body {
+  padding: var(--sp-6);
+  overflow-y: auto;
+  flex: 1 1 0%;
+}
+
+.alumno-detalle-body > * + * {
+  margin-top: var(--sp-4);
+}
+
+.alumno-detalle-content > * + * {
+  margin-top: var(--sp-6);
+}
+
+/* ---------- Tarjetas / secciones ---------- */
+.alumno-detalle-card {
+  background-color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-2xl);
+  padding: var(--sp-4);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (min-width: 768px) {
+  .alumno-detalle-card {
+    padding: var(--sp-5);
+  }
+}
+
+.alumno-detalle-card-title {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: var(--sp-3);
+}
+
+@media (min-width: 768px) {
+  .alumno-detalle-card-title {
+    font-size: var(--text-lg);
+  }
+}
+
+.alumno-detalle-card-title-blue {
+  color: var(--blue-800);
+}
+
+.alumno-detalle-card-title-emerald {
+  color: var(--emerald-800);
+}
+
+/* ---------- Grillas ---------- */
+.alumno-detalle-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.alumno-detalle-grid-2 {
+  gap: var(--sp-4);
+}
+
+.alumno-detalle-grid-2-3 {
+  gap: var(--sp-3);
+}
+
+.alumno-detalle-grid-sm2-3 {
+  gap: var(--sp-3);
+}
+
+.alumno-detalle-grid-text {
+  font-size: var(--text-sm);
+  color: var(--gray-700);
+}
+
+@media (min-width: 768px) {
+  .alumno-detalle-grid-2,
+  .alumno-detalle-grid-2-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 640px) {
+  .alumno-detalle-grid-sm2-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 768px) {
+  .alumno-detalle-col-span-2 {
+    grid-column: span 2 / span 2;
+  }
+}
+
+/* ---------- Campos ---------- */
+.alumno-detalle-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.alumno-detalle-field-label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--gray-700);
+}
+
+.alumno-detalle-req {
+  color: var(--red-500);
+}
+
+.alumno-detalle-input {
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid currentColor;
+  border-radius: var(--radius);
+}
+
+.alumno-detalle-input-error {
+  border-color: var(--red-500);
+}
+
+.alumno-detalle-textarea {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid currentColor;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  resize: vertical;
+}
+
+/* ---------- Grupo (radio) ---------- */
+.alumno-detalle-grupo-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-1);
+}
+
+.alumno-detalle-grupo-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--gray-700);
+}
+
+.alumno-detalle-radio-label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.alumno-detalle-radio-input {
+  accent-color: var(--blue-600);
+}
+
+/* ---------- Estado Activo / Egresado ---------- */
+.alumno-detalle-estado-row {
+  margin-top: var(--sp-1);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background-color: var(--gray-50);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-xl);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.alumno-detalle-estado-row-between {
+  justify-content: space-between;
+}
+
+.alumno-detalle-estado-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--gray-800);
+}
+
+.alumno-detalle-estado-text {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+.alumno-detalle-estado-hint {
+  color: var(--gray-500);
+  font-size: var(--text-xs);
+}
+
+.alumno-detalle-estado-badge {
+  font-size: var(--text-xs);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-full);
+}
+
+.alumno-detalle-estado-badge-egresado {
+  background-color: var(--emerald-100);
+  color: var(--emerald-800);
+}
+
+.alumno-detalle-estado-badge-activo {
+  background-color: var(--blue-100);
+  color: var(--blue-800);
+}
+
+/* ---------- Switch de estado ---------- */
+.alumno-detalle-switch-group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.alumno-detalle-switch-side {
+  font-size: var(--text-xs);
+}
+
+.alumno-detalle-switch-side-activo {
+  color: var(--gray-700);
+}
+
+.alumno-detalle-switch-side-egresado {
+  color: var(--emerald-700);
+}
+
+.alumno-detalle-switch-side-muted {
+  color: var(--gray-400);
+}
+
+.alumno-detalle-switch-track {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 28px;
+  width: 48px;
+  align-items: center;
+  border-radius: var(--radius-full);
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out), box-shadow 150ms var(--ease-in-out),
+    opacity 150ms var(--ease-in-out), transform 150ms var(--ease-in-out);
+}
+
+.alumno-detalle-switch-track:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #6ee7b7;
+}
+
+.alumno-detalle-switch-track-on {
+  background-color: #10b981;
+}
+
+.alumno-detalle-switch-track-off {
+  background-color: var(--gray-300);
+}
+
+.alumno-detalle-switch-thumb {
+  display: inline-block;
+  height: 24px;
+  width: 24px;
+  border-radius: var(--radius-full);
+  background-color: #ffffff;
+  box-shadow: var(--shadow);
+  transition: transform 150ms var(--ease-in-out);
+}
+
+.alumno-detalle-switch-thumb-on {
+  transform: translateX(24px);
+}
+
+.alumno-detalle-switch-thumb-off {
+  transform: translateX(4px);
+}
+
+/* ---------- Fila MiniSwitch (Tutor legal / Convive / PPI / AE) ---------- */
+.alumno-detalle-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid currentColor;
+  background-color: #ffffff;
+}
+
+.alumno-detalle-switch-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.alumno-detalle-switch-title {
+  font-size: var(--text-sm);
+  color: var(--gray-800);
+}
+
+.alumno-detalle-switch-hint {
+  font-size: var(--text-xs);
+  color: var(--gray-500);
+}
+
+/* ---------- Filas de selectores (materias) ---------- */
+.alumno-detalle-selectors-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  align-items: flex-end;
+}
+
+.alumno-detalle-selector-col {
+  /* en pantallas estrechas las columnas se apilan; el 33% vuelve desde 768px */
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+@media (min-width: 768px) {
+  .alumno-detalle-selector-col {
+    width: 33.333333%;
+  }
+}
+
+.alumno-detalle-btn-wrap {
+  padding-bottom: 2px;
+}
+
+/* ---------- Filas md (direcciones / teléfonos) ---------- */
+.alumno-detalle-row-md {
+  margin-bottom: var(--sp-2);
+}
+
+@media (min-width: 768px) {
+  .alumno-detalle-row-md {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--sp-2);
+  }
+
+  .alumno-detalle-col-md-25 {
+    width: 25%;
+  }
+
+  .alumno-detalle-col-md-mt,
+  .alumno-detalle-col-md-flex,
+  .alumno-detalle-btn-wrap-md {
+    margin-top: 0;
+  }
+
+  .alumno-detalle-col-md-flex {
+    flex: 1 1 0%;
+  }
+}
+
+.alumno-detalle-col-md-25,
+.alumno-detalle-col-md-flex {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.alumno-detalle-col-md-mt,
+.alumno-detalle-col-md-flex,
+.alumno-detalle-btn-wrap-md {
+  margin-top: var(--sp-2);
+}
+
+/* ---------- Chips (materias / direcciones / teléfonos) ---------- */
+.alumno-detalle-chips-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  height: var(--sp-11);
+  min-height: 44px;
+  padding-right: var(--sp-1);
+}
+
+.alumno-detalle-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  max-height: 80px;
+  overflow-y: auto;
+  padding-right: var(--sp-1);
+}
+
+.alumno-detalle-chips-wrap-resp {
+  max-height: 96px;
+  margin-top: var(--sp-3);
+}
+
+.alumno-detalle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  background-color: var(--gray-100);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-full);
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--text-xs);
+  max-width: 220px;
+}
+
+.alumno-detalle-chip-wide {
+  max-width: 260px;
+}
+
+.alumno-detalle-chip-resp {
+  background-color: var(--indigo-50);
+  border-color: var(--indigo-200);
+  max-width: 340px;
+}
+
+.alumno-detalle-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alumno-detalle-chip-del {
+  color: var(--red-500);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.alumno-detalle-chip-del:hover {
+  color: var(--red-700);
+}
+
+.alumno-detalle-chip-del-rose {
+  color: #e11d48;
+}
+
+.alumno-detalle-chip-del-rose:hover {
+  color: #be123c;
+}
+
+/* ---------- Dropdown simple ---------- */
+.alumno-detalle-dropdown-wrap {
+  position: relative;
+}
+
+.alumno-detalle-dropdown-btn {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid;
+  border-radius: var(--radius);
+  text-align: left;
+  transition: color 200ms var(--ease-in-out), background-color 200ms var(--ease-in-out),
+    border-color 200ms var(--ease-in-out), box-shadow 200ms var(--ease-in-out),
+    opacity 200ms var(--ease-in-out), transform 200ms var(--ease-in-out);
+}
+
+.alumno-detalle-dropdown-btn-disabled {
+  background-color: var(--gray-100);
+  color: var(--gray-500);
+  cursor: not-allowed;
+}
+
+.alumno-detalle-dropdown-btn-enabled {
+  background-color: #ffffff;
+  cursor: pointer;
+}
+
+.alumno-detalle-dropdown-btn-enabled:hover {
+  background-color: var(--gray-50);
+}
+
+.alumno-detalle-dropdown-btn-error {
+  border-color: var(--red-500);
+}
+
+.alumno-detalle-dropdown-btn-ok {
+  border-color: #000000;
+}
+
+.alumno-detalle-dropdown-panel {
+  position: absolute;
+  z-index: 20;
+  margin-top: var(--sp-1);
+  width: 100%;
+  background-color: #ffffff;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-height: var(--sp-56);
+  overflow-y: auto;
+}
+
+.alumno-detalle-dropdown-option {
+  padding: var(--sp-2) var(--sp-4);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.alumno-detalle-dropdown-option:hover {
+  background-color: var(--blue-50);
+}
+
+/* ---------- Botones (BTN_BLUE / BTN_GREEN / BTN_GRAY) ---------- */
+.alumno-detalle-btn {
+  height: var(--sp-10);
+  padding: 0 var(--sp-3);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  color: #ffffff;
+  transition: color 200ms var(--ease-in-out), background-color 200ms var(--ease-in-out),
+    border-color 200ms var(--ease-in-out), box-shadow 200ms var(--ease-in-out),
+    opacity 200ms var(--ease-in-out), transform 200ms var(--ease-in-out);
+}
+
+.alumno-detalle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.alumno-detalle-btn-blue {
+  background-color: var(--blue-600);
+}
+
+.alumno-detalle-btn-blue:hover {
+  background-color: var(--blue-700);
+}
+
+.alumno-detalle-btn-blue:disabled:hover {
+  background-color: var(--blue-600);
+}
+
+.alumno-detalle-btn-green {
+  background-color: #16a34a;
+}
+
+.alumno-detalle-btn-green:hover {
+  background-color: #15803d;
+}
+
+.alumno-detalle-btn-green:disabled:hover {
+  background-color: #16a34a;
+}
+
+.alumno-detalle-btn-gray {
+  background-color: var(--gray-800);
+}
+
+.alumno-detalle-btn-gray:hover {
+  background-color: #000000;
+}
+
+.alumno-detalle-btn-gray:disabled:hover {
+  background-color: var(--gray-800);
+}
+
+/* ---------- Vista cronograma ---------- */
+.alumno-detalle-crono {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 40dvh;
+  text-align: center;
+  padding: var(--sp-12) var(--sp-8);
+}
+
+.alumno-detalle-crono-icon {
+  border-radius: var(--radius-full);
+  background-color: var(--emerald-100);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-6);
+}
+
+.alumno-detalle-crono-icon-svg {
+  color: var(--emerald-600);
+}
+
+.alumno-detalle-crono-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--gray-800);
+  margin-bottom: var(--sp-2);
+}
+
+.alumno-detalle-crono-text {
+  color: var(--gray-500);
+  max-width: 448px;
+  margin-bottom: var(--sp-8);
+}
+
+.alumno-detalle-crono-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-6);
+  background-color: var(--emerald-600);
+  color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  font-size: var(--text-base);
+  font-weight: 500;
+  transition: color 200ms var(--ease-in-out), background-color 200ms var(--ease-in-out),
+    border-color 200ms var(--ease-in-out), box-shadow 200ms var(--ease-in-out),
+    opacity 200ms var(--ease-in-out), transform 200ms var(--ease-in-out);
+}
+
+.alumno-detalle-crono-btn:hover {
+  background-color: var(--emerald-700);
+}
+
+/* ---------- Footer ---------- */
+.alumno-detalle-footer {
+  padding: var(--sp-4) var(--sp-6);
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  background-color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-shrink: 0;
+}
+
+.alumno-detalle-footer-single {
+  display: block;
+}
+
+.alumno-detalle-footer-actions {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.alumno-detalle-btn-delete {
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--red-300);
+  color: var(--red-600);
+  cursor: pointer;
+  transition: color 200ms var(--ease-in-out), background-color 200ms var(--ease-in-out),
+    border-color 200ms var(--ease-in-out), box-shadow 200ms var(--ease-in-out),
+    opacity 200ms var(--ease-in-out), transform 200ms var(--ease-in-out);
+}
+
+.alumno-detalle-btn-delete:hover {
+  background-color: var(--red-50);
+}
+
+.alumno-detalle-btn-cancel {
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--gray-300);
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: color 200ms var(--ease-in-out), background-color 200ms var(--ease-in-out),
+    border-color 200ms var(--ease-in-out), box-shadow 200ms var(--ease-in-out),
+    opacity 200ms var(--ease-in-out), transform 200ms var(--ease-in-out);
+}
+
+.alumno-detalle-btn-cancel:hover {
+  background-color: var(--gray-50);
+}
+
+.alumno-detalle-btn-save {
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  background-color: var(--blue-600);
+  color: #ffffff;
+  cursor: pointer;
+  transition: color 200ms var(--ease-in-out), background-color 200ms var(--ease-in-out),
+    border-color 200ms var(--ease-in-out), box-shadow 200ms var(--ease-in-out),
+    opacity 200ms var(--ease-in-out), transform 200ms var(--ease-in-out);
+}
+
+.alumno-detalle-btn-save:hover {
+  background-color: var(--blue-700);
+}
+
+.alumno-detalle-footer-crono {
+  width: 100%;
+  background-color: var(--emerald-600);
+  color: #ffffff;
+  padding: var(--sp-3) 0;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  transition: color 200ms var(--ease-in-out), background-color 200ms var(--ease-in-out),
+    border-color 200ms var(--ease-in-out), box-shadow 200ms var(--ease-in-out),
+    opacity 200ms var(--ease-in-out), transform 200ms var(--ease-in-out);
+}
+
+.alumno-detalle-footer-crono:hover {
+  background-color: var(--emerald-700);
+}
+/* Foco programatico del dialogo (sin contorno visible) */
+.alumno-detalle-container:focus {
+  outline: none;
+}

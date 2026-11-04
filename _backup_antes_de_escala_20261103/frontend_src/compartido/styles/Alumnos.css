@@ -1,0 +1,296 @@
+/* ============================================
+   Alumnos.jsx - Página de gestión de alumnos
+   ============================================ */
+
+/* ---------- Página ---------- */
+.alumnos-page {
+  padding: var(--sp-6);
+  background-color: var(--gray-50);
+  min-height: 100%;
+  width: 100%;
+}
+
+.alumnos-container {
+  max-width: 80rem;
+  margin-inline: auto;
+}
+
+/* ---------- Header ---------- */
+.alumnos-header {
+  margin-bottom: var(--sp-8);
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .alumnos-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.alumnos-title {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: var(--sp-2);
+}
+
+.alumnos-subtitle {
+  color: var(--gray-600);
+}
+
+.alumnos-btn-add {
+  margin-top: var(--sp-4);
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--blue-600);
+  color: var(--color-surface);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out), box-shadow 150ms var(--ease-in-out),
+    opacity 150ms var(--ease-in-out), transform 150ms var(--ease-in-out);
+  cursor: pointer;
+}
+
+.alumnos-btn-add:hover {
+  background-color: var(--blue-700);
+}
+
+@media (min-width: 768px) {
+  .alumnos-btn-add {
+    margin-top: 0;
+  }
+}
+
+.alumnos-btn-add-icon {
+  margin-right: var(--sp-2);
+}
+
+/* ---------- Acciones del header (descargar + agregar) ---------- */
+.alumnos-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: var(--sp-4);
+}
+
+.alumnos-header-actions .alumnos-btn-add {
+  margin-top: 0;
+}
+
+@media (min-width: 768px) {
+  .alumnos-header-actions {
+    margin-top: 0;
+  }
+}
+
+.alumnos-btn-download {
+  display: inline-flex;
+  align-items: center;
+  background-color: #f1f5f9;
+  color: #334155;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+}
+
+.alumnos-btn-download:hover {
+  background-color: #e2e8f0;
+}
+
+/* ---------- Tarjeta de filtros ---------- */
+.alumnos-filtros-card {
+  background-color: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-6);
+}
+
+/* ---------- Busqueda ---------- */
+.alumnos-search-wrap {
+  position: relative;
+  flex: 1 1 0%;
+  max-width: 100%;
+}
+
+@media (min-width: 1024px) {
+  .alumnos-search-wrap {
+    max-width: 38rem;
+  }
+}
+
+.alumnos-search-icon {
+  position: absolute;
+  left: var(--sp-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--gray-400);
+  pointer-events: none;
+}
+
+.alumnos-search-input {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4) var(--sp-3) var(--sp-10);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+  color: var(--gray-700);
+  transition: all var(--duration-300) var(--ease-in-out);
+}
+
+.alumnos-search-input::placeholder {
+  color: var(--gray-400);
+}
+
+.alumnos-search-input:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--blue-500);
+  border-color: transparent;
+}
+
+.alumnos-search-input:hover {
+  background-color: var(--gray-50);
+}
+
+/* ---------- Barra de búsqueda y filtros (rediseño) ---------- */
+.tb-search-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.tb-search-grow {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.tb-search-input {
+  font-size: 15px;
+  min-height: 50px;
+  padding-right: 2.75rem;
+}
+
+.tb-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--gray-400);
+  cursor: pointer;
+}
+
+.tb-clear:hover {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.tb-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  min-height: 50px;
+  border: 1px solid var(--gray-200);
+  border-radius: 14px;
+  background: var(--color-surface);
+  color: var(--gray-700);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tb-toggle:hover {
+  border-color: var(--gray-300);
+  background: var(--gray-50);
+}
+
+.tb-toggle--open {
+  border-color: var(--blue-300);
+  background: var(--blue-50);
+  color: var(--blue-700);
+}
+
+.tb-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--blue-600);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tb-panel {
+  margin-top: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--gray-100);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.tb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tb-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-500);
+}
+
+.tb-meta {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--gray-500);
+}
+
+.tb-limpiar {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--blue-600);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tb-limpiar:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Estado de carga ---------- */
+.alumnos-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: var(--sp-20);
+  padding-bottom: var(--sp-20);
+  color: var(--gray-400);
+}

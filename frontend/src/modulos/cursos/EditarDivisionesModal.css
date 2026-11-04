@@ -1,0 +1,233 @@
+/* ============================================
+   EditarDivisionesModal.jsx - Edición de divisiones por año
+   ============================================ */
+
+/* ---------- Overlay y modal ---------- */
+/* La opacidad de entrada se anima por CSS: con initial={{opacity:0}} de Framer
+   queda opacity:0 en el style inline y al terminar la animacion WAAPI hay un
+   frame con el modal transparente. Con fill "backwards" el reposo vuelve a 1. */
+@keyframes ediv-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modal-ediv-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  animation: ediv-fade-in 300ms ease-out backwards;
+  /* margen para que el modal no quede pegado al borde en pantallas cortas */
+  padding: var(--sp-3);
+}
+
+.modal-ediv-dialog {
+  width: 100%;
+  max-width: 64rem;
+  /* sin tope de alto el modal crece más que la ventana y el footer queda inalcanzable */
+  max-height: calc(100dvh - var(--sp-6));
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-2xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--gray-200);
+  animation: ediv-fade-in 300ms ease-out backwards;
+}
+
+.modal-ediv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.modal-ediv-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--blue-900);
+}
+
+.modal-ediv-close {
+  padding: var(--sp-2);
+  border-radius: var(--radius-lg);
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: color var(--duration-300) var(--ease-out),
+    background-color var(--duration-300) var(--ease-out),
+    border-color var(--duration-300) var(--ease-out),
+    transform var(--duration-300) var(--ease-out);
+}
+
+.modal-ediv-close:hover {
+  background: var(--gray-100);
+}
+
+.modal-ediv-close:active {
+  transform: scale(0.95);
+}
+
+.modal-ediv-content {
+  padding: var(--sp-4) var(--sp-5);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ---------- Grid responsive de años ---------- */
+.modal-ediv-grid,
+.modal-ediv-grid--3col {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+@media (min-width: 768px) {
+  .modal-ediv-grid,
+  .modal-ediv-grid--3col {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .modal-ediv-grid--3col {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ---------- Tarjeta de año ---------- */
+.modal-ediv-card {
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-xl);
+  padding: var(--sp-3);
+  background: var(--gray-50);
+}
+
+.modal-ediv-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-2);
+}
+
+.modal-ediv-card-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--blue-900);
+}
+
+.modal-ediv-card-count {
+  font-size: 11px;
+  color: var(--gray-500);
+}
+
+.modal-ediv-divisions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* ---------- Chips de división ---------- */
+.modal-ediv-chip {
+  cursor: pointer;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid;
+  font-size: var(--text-sm);
+  user-select: none;
+  transition: color var(--duration-300) var(--ease-out),
+    background-color var(--duration-300) var(--ease-out),
+    border-color var(--duration-300) var(--ease-out),
+    transform var(--duration-300) var(--ease-out);
+}
+
+.modal-ediv-chip:active {
+  transform: scale(0.95);
+}
+
+.modal-ediv-chip--on {
+  background: var(--blue-600);
+  color: var(--color-surface);
+  border-color: var(--blue-700);
+}
+
+.modal-ediv-chip--off {
+  background: var(--color-surface);
+  color: var(--gray-700);
+  border-color: var(--gray-300);
+}
+
+.modal-ediv-chip--off:hover {
+  background: var(--gray-100);
+}
+
+.modal-ediv-hidden-input {
+  display: none;
+}
+
+.modal-ediv-tip {
+  margin-top: var(--sp-2);
+  font-size: 11px;
+  color: var(--gray-500);
+}
+
+/* ---------- Footer ---------- */
+.modal-ediv-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border-top: 1px solid var(--gray-200);
+}
+
+.modal-ediv-btn-reset {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  background: var(--gray-100);
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: color var(--duration-300) var(--ease-out),
+    background-color var(--duration-300) var(--ease-out),
+    border-color var(--duration-300) var(--ease-out),
+    transform var(--duration-300) var(--ease-out);
+}
+
+.modal-ediv-btn-reset:hover {
+  background: var(--gray-200);
+}
+
+.modal-ediv-btn-reset:active {
+  transform: scale(0.95);
+}
+
+.modal-ediv-footer-actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.modal-ediv-btn-save {
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  background: var(--blue-600);
+  color: var(--color-surface);
+  cursor: pointer;
+  transition: color var(--duration-300) var(--ease-out),
+    background-color var(--duration-300) var(--ease-out),
+    border-color var(--duration-300) var(--ease-out),
+    transform var(--duration-300) var(--ease-out);
+}
+
+.modal-ediv-btn-save:hover {
+  background: var(--blue-700);
+}
+
+.modal-ediv-btn-save:active {
+  transform: scale(0.95);
+}

@@ -1,0 +1,399 @@
+/* ============================================
+   Profesores.jsx - Página de gestión de profesores
+   ============================================ */
+
+/* ---------- Página ---------- */
+.prof-page {
+  padding: var(--sp-6);
+  background: var(--color-page-bg);
+  min-height: 100%;
+  width: 100%;
+}
+
+.prof-page-inner {
+  max-width: 80rem;
+  margin: 0 auto;
+}
+
+/* ---------- Header ---------- */
+.prof-header {
+  margin-bottom: var(--sp-8);
+  display: flex;
+  flex-direction: column;
+}
+
+.prof-title {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: var(--sp-2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.prof-subtitle {
+  color: var(--gray-600);
+}
+
+.prof-header-actions {
+  margin-top: var(--sp-4);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.prof-add-btn {
+  display: inline-flex;
+  align-items: center;
+  background: var(--blue-600);
+  color: #fff;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out), box-shadow 150ms var(--ease-in-out),
+    opacity 150ms var(--ease-in-out), transform 150ms var(--ease-in-out);
+  cursor: pointer;
+}
+
+.prof-add-btn:hover {
+  background: var(--blue-700);
+}
+
+.prof-add-btn-icon {
+  margin-right: var(--sp-2);
+}
+
+/* ---------- Tarjeta de filtros ---------- */
+.prof-filter-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-6);
+}
+
+
+/* ---------- Busqueda ---------- */
+.prof-search-wrap {
+  position: relative;
+  flex: 1 1 0%;
+  max-width: 100%;
+}
+
+.prof-search-icon {
+  position: absolute;
+  left: var(--sp-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--gray-400);
+  pointer-events: none;
+}
+
+.prof-search-input {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4) var(--sp-3) var(--sp-10);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--gray-700);
+  transition: all var(--duration-300) var(--ease-in-out);
+}
+
+.prof-search-input::placeholder {
+  color: var(--gray-400);
+}
+
+.prof-search-input:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--blue-500);
+  border-color: transparent;
+}
+
+.prof-search-input:hover {
+  background: var(--gray-50);
+}
+
+/* ---------- Grupo de filtros ---------- */
+
+
+/* ---------- Barra de búsqueda y filtros (rediseño) ---------- */
+.tb-search-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.tb-search-grow {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.tb-search-input {
+  font-size: 15px;
+  min-height: 50px;
+  padding-right: 2.75rem;
+}
+
+.tb-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--gray-400);
+  cursor: pointer;
+}
+
+.tb-clear:hover {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.tb-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  min-height: 50px;
+  border: 1px solid var(--gray-200);
+  border-radius: 14px;
+  background: var(--color-surface);
+  color: var(--gray-700);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tb-toggle:hover {
+  border-color: var(--gray-300);
+  background: var(--gray-50);
+}
+
+.tb-toggle--open {
+  border-color: var(--blue-300);
+  background: var(--blue-50);
+  color: var(--blue-700);
+}
+
+.tb-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--blue-600);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tb-panel {
+  margin-top: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--gray-100);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.tb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tb-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-500);
+}
+
+.tb-meta {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--gray-500);
+}
+
+.tb-limpiar {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--blue-600);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tb-limpiar:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Estado de carga ---------- */
+.prof-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: var(--sp-20);
+  padding-bottom: var(--sp-20);
+  color: var(--gray-400);
+}
+
+/* ---------- Dropdown de materias (DropdownMaterias) ---------- */
+.prof-drop-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.prof-drop-btn {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-lg);
+  text-align: left;
+  background: var(--color-surface);
+  position: relative;
+  font-size: var(--text-sm);
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out), box-shadow 150ms var(--ease-in-out);
+}
+
+.prof-drop-btn--enabled {
+  color: var(--gray-700);
+  cursor: pointer;
+}
+
+.prof-drop-btn--enabled:hover {
+  background: var(--blue-50);
+  color: var(--blue-700);
+}
+
+.prof-drop-btn--disabled {
+  color: var(--gray-400);
+  background: var(--gray-100);
+  cursor: not-allowed;
+}
+
+.prof-drop-chevron {
+  position: absolute;
+  right: var(--sp-4);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.prof-drop-panel {
+  position: absolute;
+  left: 0;
+  margin-top: var(--sp-1);
+  width: 100%;
+  z-index: 50;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--gray-100);
+  max-height: 224px;
+  overflow-y: auto;
+  transform-origin: top;
+  animation: prof-drop-in 200ms ease-out backwards;
+}
+
+@keyframes prof-drop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.prof-drop-option {
+  padding: var(--sp-2) var(--sp-4);
+  cursor: pointer;
+}
+
+.prof-drop-option:hover {
+  background: var(--blue-50);
+}
+
+.prof-drop-option--all {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.prof-drop-option--selected {
+  background: var(--blue-100);
+  color: var(--blue-700);
+  font-weight: 600;
+}
+
+/* ---------- Responsive ---------- */
+@media (min-width: 640px) {
+  .prof-search-wrap {
+    max-width: 360px;
+  }
+}
+
+@media (min-width: 768px) {
+  .prof-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .prof-header-actions {
+    margin-top: 0;
+  }
+}
+
+@media (min-width: 1280px) {
+  .prof-search-wrap {
+    max-width: 38rem;
+  }
+}
+
+/* ---------- Overlay de filtrado ---------- */
+.prof-list-wrap {
+  position: relative;
+}
+
+.prof-list-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(2px);
+  border-radius: var(--radius-xl);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.prof-list-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--gray-200);
+  border-top-color: var(--blue-600);
+  border-radius: 9999px;
+  animation: prof-spin 0.7s linear infinite;
+}
+
+@keyframes prof-spin {
+  to { transform: rotate(360deg); }
+}

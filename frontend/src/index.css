@@ -1,0 +1,7 @@
+/* ============================================
+   Punto de entrada de estilos
+   Tailwind fue reemplazado por CSS puro organizado por módulos.
+   Cada componente/página importa su propio archivo CSS.
+   ============================================ */
+@import "./compartido/styles/variables.css";
+@import "./compartido/styles/base.css";

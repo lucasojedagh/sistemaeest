@@ -1,0 +1,608 @@
+/* ============================================
+   ListaAlumnos.jsx - Lista virtualizada de alumnos
+   ============================================ */
+
+/* ---------- Contenedor ---------- */
+.lista-alumnos {
+  position: relative;
+}
+
+/* ---------- Fades superior/inferior ---------- */
+.lista-alumnos-fade-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--sp-7);
+  background-image: linear-gradient(to bottom, var(--slate-50), transparent);
+  pointer-events: none;
+  border-top-left-radius: var(--radius-2xl);
+  border-top-right-radius: var(--radius-2xl);
+  z-index: 10;
+}
+
+.lista-alumnos-fade-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--sp-7);
+  background-image: linear-gradient(to top, var(--slate-50), transparent);
+  pointer-events: none;
+  border-bottom-left-radius: var(--radius-2xl);
+  border-bottom-right-radius: var(--radius-2xl);
+  z-index: 10;
+}
+
+/* ---------- Contenedor de scroll ---------- */
+.lista-alumnos-scroll {
+  height: 570px;
+  /* El scroll vertical alimenta la virtualizacion de ListaAlumnos.jsx:
+     no reemplazar con overflow:hidden o la lista deja de scrollear */
+  overflow-y: auto;
+  /* auto (y no hidden) para que en pantallas cortas la tabla haga scroll
+     horizontal en vez de cortar columnas */
+  overflow-x: auto;
+  border-radius: var(--radius-2xl);
+  position: relative;
+  padding-top: var(--sp-2);
+  padding-bottom: var(--sp-2);
+  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.3));
+  backdrop-filter: blur(4px);
+}
+
+.lista-alumnos-scroll:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.lista-alumnos-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.lista-alumnos-scroll::-webkit-scrollbar-thumb {
+  background-color: #818cf8;
+  border-radius: 999px;
+}
+
+/* El margen aleja el track de las esquinas redondeadas del contenedor,
+   para que no se vean recortes en las puntas */
+.lista-alumnos-scroll::-webkit-scrollbar-track {
+  background-color: #e2e8f0;
+  border-radius: 999px;
+  margin: var(--sp-2) 0;
+}
+
+/* ---------- Tarjeta de la tabla ---------- */
+.lista-alumnos-card {
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-xl), 0 0 0 1px rgba(226, 232, 240, 0.7);
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+  /* en movil la tabla mide ~442px: con overflow:hidden las acciones quedaban
+     cortadas sin forma de reachederlas, asi que es el scroll horizontal */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.lista-alumnos-card::-webkit-scrollbar {
+  height: 6px;
+}
+
+.lista-alumnos-card::-webkit-scrollbar-track {
+  background-color: var(--gray-200);
+}
+
+.lista-alumnos-card::-webkit-scrollbar-thumb {
+  background-color: var(--blue-400);
+  border-radius: 999px;
+}
+
+.lista-alumnos-table {
+  min-width: 100%;
+  font-size: var(--text-sm);
+}
+
+.lista-alumnos-tbody > * + * {
+  border-top: 1px solid var(--slate-100);
+}
+
+/* ---------- Filas ---------- */
+.lista-alumnos-row {
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out), box-shadow 150ms var(--ease-in-out);
+}
+
+.lista-alumnos-row:hover {
+  background-color: rgba(238, 242, 255, 0.7);
+  color: var(--indigo-700);
+}
+
+.lista-alumnos-row:nth-child(odd) {
+  background-color: #ffffff;
+}
+
+.lista-alumnos-row:nth-child(even) {
+  background-color: rgba(248, 250, 252, 0.6);
+}
+
+.lista-alumnos-row:focus-within {
+  box-shadow: 0 0 0 1px rgba(165, 180, 252, 0.6);
+}
+
+/* ---------- Celdas ---------- */
+.lista-alumnos-cell-main {
+  padding: var(--sp-5) var(--sp-6);
+  vertical-align: top;
+}
+
+.lista-alumnos-cell-actions {
+  padding: var(--sp-5) var(--sp-6);
+  text-align: right;
+  vertical-align: middle;
+  width: 4px;
+  white-space: nowrap;
+}
+
+/* ---------- Avatar ---------- */
+.lista-alumnos-avatar-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+
+.lista-alumnos-avatar-wrap {
+  position: relative;
+  border-radius: var(--radius-xl);
+}
+
+.lista-alumnos-avatar-wrap-egresado {
+  box-shadow: 0 0 0 2px rgba(110, 231, 183, 0.7);
+}
+
+.lista-alumnos-avatar-inner {
+  padding: var(--sp-3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm), 0 0 0 1px rgba(255, 255, 255, 0.4) inset;
+}
+
+.lista-alumnos-avatar-f {
+  background-color: rgba(251, 207, 232, 0.7);
+}
+
+.lista-alumnos-avatar-m {
+  background-color: rgba(191, 219, 254, 0.7);
+}
+
+.lista-alumnos-avatar-o {
+  background-color: rgba(229, 231, 235, 0.7);
+}
+
+.lista-alumnos-icon-f {
+  color: #be185d;
+}
+
+.lista-alumnos-icon-m {
+  color: var(--blue-700);
+}
+
+.lista-alumnos-icon-o {
+  color: var(--gray-700);
+}
+
+.lista-alumnos-avatar-initials {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  font-size: 10px;
+  padding: 2px var(--sp-1-5);
+  border-radius: var(--radius-md);
+  background-color: rgba(0, 0, 0, 0.7);
+  color: #ffffff;
+  letter-spacing: 0.025em;
+}
+
+.lista-alumnos-avatar-dot {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  background-color: var(--emerald-400);
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+/* ---------- Info del alumno ---------- */
+.lista-alumnos-info {
+  min-width: 0;
+}
+
+.lista-alumnos-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--sp-5);
+  row-gap: var(--sp-1);
+}
+
+.lista-alumnos-name-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--slate-500);
+}
+
+.lista-alumnos-name-value {
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--slate-900);
+  font-weight: 500;
+  font-size: 17px;
+}
+
+.lista-alumnos-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+/* ---------- Badge DNI ---------- */
+.lista-alumnos-dni-wrap,
+.lista-alumnos-curso-wrap {
+  position: relative;
+}
+
+.lista-alumnos-dni-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  background-color: rgba(240, 253, 250, 0.8);
+  border: 1px solid #ccfbf1;
+  border-radius: var(--radius-md);
+  padding: var(--sp-1) var(--sp-2);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out), box-shadow 150ms var(--ease-in-out),
+    opacity 150ms var(--ease-in-out), transform 150ms var(--ease-in-out);
+}
+
+.lista-alumnos-dni-trigger:active {
+  transform: scale(0.98);
+}
+
+.lista-alumnos-dni-chip {
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius);
+  background-color: #ccfbf1;
+  color: #115e59;
+  font-weight: 500;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.lista-alumnos-dni-value {
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius);
+  background-color: #ffffff;
+  border: 1px solid var(--teal-200);
+  color: #0f766e;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.025em;
+}
+
+/* ---------- Badge Curso ---------- */
+.lista-alumnos-curso-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  padding: var(--sp-1) var(--sp-2);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out), box-shadow 150ms var(--ease-in-out),
+    opacity 150ms var(--ease-in-out), transform 150ms var(--ease-in-out);
+}
+
+.lista-alumnos-curso-trigger:active {
+  transform: scale(0.98);
+}
+
+.lista-alumnos-curso-trigger-egresado {
+  background-color: rgba(248, 250, 252, 0.8);
+  border-color: var(--slate-100);
+}
+
+.lista-alumnos-curso-trigger-activo {
+  background-color: rgba(245, 243, 255, 0.8);
+  border-color: var(--violet-100);
+}
+
+.lista-alumnos-curso-chip {
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius);
+  font-weight: 500;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.lista-alumnos-curso-chip-egresado {
+  background-color: var(--slate-100);
+  color: var(--slate-700);
+}
+
+.lista-alumnos-curso-chip-activo {
+  background-color: var(--violet-100);
+  color: var(--violet-800);
+}
+
+.lista-alumnos-curso-value {
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius);
+  background-color: #ffffff;
+  border: 1px solid;
+  font-size: 11px;
+}
+
+.lista-alumnos-curso-value-egresado {
+  border-color: var(--slate-200);
+  color: var(--slate-700);
+}
+
+.lista-alumnos-curso-value-activo {
+  border-color: var(--violet-200);
+  color: var(--violet-700);
+}
+
+/* ---------- Popovers (DNI / curso) ---------- */
+.lista-alumnos-popover {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  border-radius: var(--radius-lg);
+  background-color: #ffffff;
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--slate-200);
+  padding: var(--sp-2) var(--sp-3);
+  animation: lista-alumnos-popover-in 180ms ease-out backwards;
+}
+
+@keyframes lista-alumnos-popover-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.lista-alumnos-popover-top {
+  bottom: 100%;
+  margin-bottom: var(--sp-1);
+}
+
+.lista-alumnos-popover-bottom {
+  top: 100%;
+  margin-top: var(--sp-1);
+}
+
+.lista-alumnos-popover-value {
+  color: var(--slate-900);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+}
+
+/* ---------- Badge de grupo ---------- */
+.lista-alumnos-grupo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  border-radius: var(--radius-md);
+  padding: var(--sp-1) var(--sp-2);
+  box-shadow: var(--shadow-sm);
+}
+
+.lista-alumnos-grupo-a {
+  background-color: var(--emerald-100);
+  color: var(--emerald-700);
+  border: 1px solid var(--emerald-200);
+}
+
+.lista-alumnos-grupo-b {
+  background-color: var(--amber-100);
+  color: var(--amber-700);
+  border: 1px solid var(--amber-200);
+}
+
+.lista-alumnos-grupo-label {
+  font-weight: 500;
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.lista-alumnos-grupo-value {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ---------- Badge de especialidad ---------- */
+.lista-alumnos-esp {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  border: 1px solid var(--indigo-200);
+  background-color: rgba(238, 242, 255, 0.8);
+  border-radius: var(--radius-md);
+  padding: var(--sp-1) var(--sp-2);
+  box-shadow: var(--shadow-sm);
+}
+
+.lista-alumnos-esp-label {
+  font-weight: 500;
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--indigo-500);
+}
+
+.lista-alumnos-esp-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4338ca;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+/* ---------- Chips de estado ---------- */
+.lista-alumnos-estado-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.lista-alumnos-chip {
+  font-size: 11px;
+  padding: var(--sp-1) var(--sp-2-5);
+  border-radius: var(--radius-full);
+  border: 1px solid;
+  box-shadow: var(--shadow-sm);
+}
+
+.lista-alumnos-chip-egresado {
+  background-color: var(--emerald-50);
+  color: var(--emerald-700);
+  border-color: var(--emerald-200);
+}
+
+.lista-alumnos-chip-ppi {
+  background-color: #fdf4ff;
+  color: #a21caf;
+  border-color: #f5d0fe;
+}
+
+.lista-alumnos-chip-ae {
+  background-color: #ecfeff;
+  color: #0e7490;
+  border-color: #a5f3fc;
+}
+
+.lista-alumnos-chip-rec {
+  background-color: var(--orange-50);
+  color: var(--orange-700);
+  border-color: var(--orange-200);
+}
+
+.lista-alumnos-chip-int {
+  background-color: var(--indigo-50);
+  color: #4338ca;
+  border-color: var(--indigo-200);
+}
+
+/* ---------- Acciones ---------- */
+.lista-alumnos-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+}
+
+.lista-alumnos-btn-ficha,
+.lista-alumnos-btn-horario,
+.lista-alumnos-btn-editar {
+  border-radius: var(--radius-full);
+  padding: var(--sp-2-5);
+  transition: color 200ms var(--ease-in-out), background-color 200ms var(--ease-in-out),
+    border-color 200ms var(--ease-in-out);
+}
+
+.lista-alumnos-btn-ficha:active,
+.lista-alumnos-btn-horario:active,
+.lista-alumnos-btn-editar:active {
+  transform: scale(0.95);
+}
+
+.lista-alumnos-btn-ficha {
+  color: var(--emerald-600);
+  cursor: pointer;
+}
+
+.lista-alumnos-btn-ficha:hover {
+  color: var(--emerald-800);
+  background-color: var(--emerald-100);
+}
+
+.lista-alumnos-btn-ficha:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(110, 231, 183, 0.8);
+}
+
+.lista-alumnos-btn-horario-egresado {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.lista-alumnos-btn-horario-activo {
+  color: var(--amber-600);
+  cursor: pointer;
+}
+
+.lista-alumnos-btn-horario-activo:hover {
+  color: var(--amber-800);
+  background-color: var(--amber-100);
+}
+
+.lista-alumnos-btn-horario-activo:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(252, 211, 77, 0.8);
+}
+
+.lista-alumnos-btn-horario:disabled {
+  cursor: not-allowed;
+}
+
+.lista-alumnos-btn-editar {
+  color: var(--blue-600);
+  cursor: pointer;
+}
+
+.lista-alumnos-btn-editar:hover {
+  color: var(--blue-800);
+  background-color: var(--blue-100);
+}
+
+.lista-alumnos-btn-editar:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(147, 197, 253, 0.8);
+}
+
+/* ---------- Estado vacío ---------- */
+.lista-alumnos-empty {
+  padding: var(--sp-10) var(--sp-6);
+  text-align: center;
+  color: var(--slate-500);
+}
+
+.lista-alumnos-empty-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}

@@ -1,0 +1,457 @@
+/* ============================================
+   Estilos del modal "Acerca de" (src/components/AboutModal.jsx)
+   ============================================ */
+
+/* ---------- Overlay / backdrop ---------- */
+/* Entrada por CSS: con initial={{opacity:0}} de Framer queda opacity:0 en el
+   style inline y al terminar la animacion WAAPI hay un frame con el modal
+   transparente. Con fill "backwards" el valor en reposo vuelve a ser 1. */
+@keyframes about-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes about-dialog-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+
+.about-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.3));
+  animation: about-backdrop-in 180ms ease-out backwards;
+}
+
+/* ---------- Diálogo ---------- */
+.about-dialog {
+  width: 100%;
+  max-width: 56rem;
+  max-height: calc(100dvh - var(--sp-6));
+  overflow: hidden;
+  position: relative;
+  border-radius: var(--radius-2xl);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  animation: about-dialog-in 240ms cubic-bezier(0.25, 0.46, 0.45, 0.94) backwards;
+}
+
+/* ---------- Header ---------- */
+.about-header {
+  padding: var(--sp-6);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  background-image: linear-gradient(to bottom right, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.3));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.about-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.about-header-icon {
+  padding: var(--sp-3);
+  border-radius: var(--radius-2xl);
+  background-image: linear-gradient(to bottom right, var(--blue-500), var(--purple-600));
+  color: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  flex-shrink: 0;
+}
+
+.about-title {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.about-subtitle {
+  color: var(--gray-600);
+}
+
+/* ---------- Botón cerrar ---------- */
+.about-close {
+  border-radius: var(--radius-xl);
+  padding: var(--sp-3);
+  cursor: pointer;
+  border: 1px solid transparent;
+  color: var(--gray-500);
+  transition: all var(--duration-300) var(--ease-in-out);
+}
+
+.about-close:hover {
+  color: var(--gray-900);
+  background-color: rgba(229, 231, 235, 0.8);
+  border-color: var(--gray-300);
+}
+
+.about-close:focus {
+  outline: none;
+}
+
+.about-close:focus-visible {
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.3);
+}
+
+/* ---------- Contenido con scroll ---------- */
+.about-scroll {
+  overflow-y: auto;
+  max-height: calc(85vh - 140px);
+  max-height: calc(85dvh - 140px);
+}
+
+.about-content {
+  padding: var(--sp-8);
+}
+
+.about-content > * + * {
+  margin-top: var(--sp-8);
+}
+
+/* ---------- Títulos de sección ---------- */
+.about-section-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--gray-900);
+  margin-bottom: var(--sp-4);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* ---------- Colores de iconos ---------- */
+.about-ic-blue {
+  color: var(--blue-600);
+}
+
+.about-ic-purple {
+  color: var(--purple-600);
+}
+
+.about-ic-green {
+  color: var(--green-600);
+}
+
+/* ---------- Tarjeta de logo / institución ---------- */
+.about-logo-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background-image: linear-gradient(to bottom right, var(--blue-50), var(--purple-50));
+  border-radius: var(--radius-2xl);
+  padding: var(--sp-6);
+  border: 1px solid var(--blue-100);
+}
+
+.about-logo-img {
+  width: var(--sp-28);
+  height: var(--sp-28);
+  margin-bottom: var(--sp-3);
+  object-fit: contain;
+  background-color: var(--color-surface);
+  border-radius: var(--radius-2xl);
+  padding: var(--sp-2);
+  box-shadow: var(--shadow-md);
+}
+
+.about-school-name {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: var(--sp-1);
+}
+
+.about-school-sub {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--gray-800);
+  margin-bottom: var(--sp-1);
+}
+
+.about-school-caption {
+  font-size: var(--text-base);
+  color: var(--gray-600);
+  margin-bottom: var(--sp-2);
+}
+
+.about-school-career {
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+  margin-bottom: var(--sp-3);
+}
+
+.about-heart-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+}
+
+.about-heart {
+  color: var(--red-500);
+}
+
+/* ---------- Información del sistema ---------- */
+.about-sys-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4);
+}
+
+@media (max-width: 640px) {
+  .about-sys-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.about-sys-card {
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(229, 231, 235, 0.7);
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  padding: var(--sp-4);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-200) var(--ease-in-out);
+}
+
+.about-sys-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.about-sys-card-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.about-sys-icon {
+  padding: var(--sp-2);
+  border-radius: var(--radius-lg);
+  background-color: var(--blue-100);
+  color: var(--blue-600);
+  flex-shrink: 0;
+}
+
+.about-sys-label {
+  font-weight: 600;
+  color: var(--gray-700);
+}
+
+.about-sys-value {
+  font-size: var(--text-sm);
+  color: var(--gray-600);
+  margin-top: var(--sp-1);
+}
+
+/* ---------- Grids 2 columnas responsive ---------- */
+.about-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: var(--sp-4);
+}
+
+@media (min-width: 768px) {
+  .about-grid-2col {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ---------- Equipo de desarrollo ---------- */
+.about-team-card {
+  border-radius: var(--radius-2xl);
+  border: 1px solid rgba(229, 231, 235, 0.7);
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  padding: var(--sp-4);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-300) var(--ease-in-out);
+}
+
+.about-team-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: scale(1.02);
+}
+
+.about-team-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.about-team-avatar {
+  width: var(--sp-12);
+  height: var(--sp-12);
+  border-radius: var(--radius-2xl);
+  color: var(--color-surface);
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  transition: transform var(--duration-200) var(--ease-in-out);
+  flex-shrink: 0;
+}
+
+.about-team-card:hover .about-team-avatar {
+  transform: scale(1.1);
+}
+
+.about-member-blue {
+  background-image: linear-gradient(to bottom right, #3b82f6, #06b6d4);
+}
+
+.about-member-purple {
+  background-image: linear-gradient(to bottom right, #a855f7, #ec4899);
+}
+
+.about-member-green {
+  background-image: linear-gradient(to bottom right, #22c55e, #10b981);
+}
+
+.about-member-orange {
+  background-image: linear-gradient(to bottom right, #f97316, #ef4444);
+}
+
+.about-team-info {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+.about-team-name {
+  font-weight: 600;
+  color: var(--gray-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.about-team-role {
+  font-size: var(--text-sm);
+  color: var(--gray-600);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Descripción del proyecto ---------- */
+.about-desc-card {
+  background-image: linear-gradient(to bottom right, var(--gray-50), var(--blue-50));
+  border-radius: var(--radius-2xl);
+  padding: var(--sp-6);
+  border: 1px solid var(--blue-100);
+}
+
+.about-text {
+  color: var(--gray-700);
+  line-height: 1.625;
+}
+
+.about-text + .about-text {
+  margin-top: var(--sp-3);
+}
+
+/* ---------- Materias involucradas ---------- */
+.about-subject-card {
+  border-radius: var(--radius-2xl);
+  padding: var(--sp-5);
+}
+
+.about-subject-green {
+  background-image: linear-gradient(to bottom right, var(--green-50), var(--emerald-50));
+  border: 1px solid var(--green-100);
+}
+
+.about-subject-purple {
+  background-image: linear-gradient(to bottom right, var(--purple-50), var(--pink-50));
+  border: 1px solid var(--purple-100);
+}
+
+.about-subject-title {
+  font-weight: 600;
+  color: var(--gray-900);
+  margin-bottom: var(--sp-2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.about-subject-text {
+  font-size: var(--text-sm);
+  color: var(--gray-600);
+}
+
+/* ---------- Licencia ---------- */
+.about-license-card {
+  background-image: linear-gradient(to bottom right, var(--gray-50), var(--purple-50));
+  border-radius: var(--radius-2xl);
+  padding: var(--sp-6);
+  border: 1px solid var(--purple-100);
+}
+
+.about-license-list {
+  margin-top: var(--sp-3);
+  font-size: var(--text-sm);
+  color: var(--gray-600);
+}
+
+.about-license-list > * + * {
+  margin-top: var(--sp-2);
+}
+
+.about-license-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.about-license-dot {
+  width: var(--sp-2);
+  height: var(--sp-2);
+  border-radius: var(--radius-full);
+  background-color: var(--green-500);
+  flex-shrink: 0;
+}
+
+/* ---------- Contacto ---------- */
+.about-contact {
+  text-align: center;
+  border-top: 1px solid var(--gray-200);
+  padding-top: var(--sp-6);
+}
+
+.about-contact-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+  margin-bottom: var(--sp-2);
+}
+
+.about-contact-email {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  color: var(--blue-600);
+  transition: color var(--duration-150) var(--ease-in-out);
+}
+
+.about-contact-email:hover {
+  color: var(--blue-700);
+}
+
+.about-contact-link {
+  font-weight: 500;
+}

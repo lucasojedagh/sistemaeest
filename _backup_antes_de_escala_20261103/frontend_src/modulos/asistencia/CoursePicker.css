@@ -1,0 +1,211 @@
+/* ============================================
+   CoursePicker.jsx - Selector de curso desplegable
+   ============================================ */
+
+/* ---------- Contenedor ---------- */
+.picker-wrap {
+  position: relative;
+  width: var(--sp-56);
+}
+
+/* ---------- Botón disparador ---------- */
+.picker-btn {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-4);
+  height: 42px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  background-color: #ffffff;
+  text-align: left;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--gray-700);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  outline: none;
+  transition: color 200ms var(--ease-in-out), background-color 200ms var(--ease-in-out),
+    border-color 200ms var(--ease-in-out);
+}
+
+.picker-btn:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--blue-500);
+  border-color: transparent;
+}
+
+.picker-btn-enabled {
+  cursor: pointer;
+}
+
+.picker-btn-enabled:hover {
+  background-color: var(--gray-50);
+}
+
+.picker-btn-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.picker-btn-open {
+  box-shadow: 0 0 0 2px var(--blue-500);
+  border-color: transparent;
+}
+
+.picker-btn-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-chevron {
+  pointer-events: none;
+  flex-shrink: 0;
+  transition: transform 180ms ease;
+}
+
+.picker-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* ---------- Menú desplegable ---------- */
+.picker-menu {
+  position: absolute;
+  left: 0;
+  margin-top: var(--sp-2);
+  /* en pantallas chicas el menu mide lo mismo que su disparador; 340px fijos
+     desbordaban el viewport y ensanchaban toda la pagina */
+  width: 100%;
+  z-index: 50;
+  background-color: #ffffff;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--gray-100);
+  max-height: 60dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 150ms ease, transform 150ms ease;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.picker-menu-open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.picker-menu-scroll {
+  flex: 1 1 0%;
+  overflow-y: auto;
+  padding-top: var(--sp-1);
+  padding-bottom: var(--sp-1);
+}
+
+/* ---------- Opción "Todos los cursos" ---------- */
+.picker-option-all {
+  width: 100%;
+  text-align: left;
+  padding: var(--sp-2-5) var(--sp-4);
+  font-size: var(--text-sm);
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out);
+  cursor: pointer;
+}
+
+.picker-option-all-selected {
+  background-color: var(--blue-50);
+  color: var(--blue-600);
+  font-weight: 500;
+}
+
+.picker-option-all-default {
+  color: var(--gray-800);
+}
+
+.picker-option-all-default:hover {
+  background-color: var(--gray-50);
+}
+
+/* ---------- Grupos por año ---------- */
+.picker-group {
+  padding-top: var(--sp-1);
+  padding-bottom: var(--sp-1);
+}
+
+.picker-group-label {
+  padding: var(--sp-2) var(--sp-4) var(--sp-1) var(--sp-4);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--gray-400);
+}
+
+.picker-group-empty {
+  padding: var(--sp-1) var(--sp-4);
+  font-size: var(--text-xs);
+  color: var(--gray-400);
+}
+
+/* ---------- Opción de curso ---------- */
+.picker-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--text-sm);
+  text-align: left;
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out);
+  cursor: pointer;
+}
+
+.picker-option-selected {
+  background-color: var(--blue-50);
+  color: var(--blue-700);
+  font-weight: 500;
+}
+
+.picker-option-default {
+  color: var(--gray-700);
+}
+
+.picker-option-default:hover {
+  background-color: var(--gray-50);
+}
+
+.picker-option-text {
+  flex: 1 1 0%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-check {
+  width: 16px;
+  height: 16px;
+  color: var(--blue-600);
+  flex-shrink: 0;
+}
+
+/* ---------- Estado vacío ---------- */
+.picker-empty {
+  padding: var(--sp-6) var(--sp-4);
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+}
+/* ---------- Escritorio: el menu recupera su ancho de 340px ---------- */
+@media (min-width: 640px) {
+  .picker-menu {
+    width: 340px;
+  }
+}

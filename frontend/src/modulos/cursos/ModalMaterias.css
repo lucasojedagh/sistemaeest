@@ -1,0 +1,379 @@
+/* ============================================
+   ModalMaterias.jsx - Gestión de materias de un año
+   ============================================ */
+
+/* ---------- Overlay y modal ---------- */
+.mmat-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+  /* margen para que el modal no quede pegado al borde en pantallas cortas */
+  padding: var(--sp-3);
+}
+
+.mmat-modal {
+  width: 100%;
+  max-width: 56rem;
+  max-height: calc(100dvh - var(--sp-6));
+  background: var(--color-surface);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-2xl);
+  border: 1px solid var(--gray-200);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Header ---------- */
+.mmat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.mmat-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--blue-900);
+}
+
+.mmat-sub {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+}
+
+.mmat-close {
+  padding: var(--sp-2);
+  border-radius: var(--radius-lg);
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: color var(--duration-300) var(--ease-out),
+    background-color var(--duration-300) var(--ease-out),
+    transform var(--duration-300) var(--ease-out);
+}
+
+.mmat-close:hover {
+  background: var(--gray-100);
+}
+
+.mmat-close:active {
+  transform: scale(0.95);
+}
+
+/* ---------- Body ---------- */
+.mmat-body {
+  flex: 1 1 0%;
+  overflow-y: auto;
+  padding: var(--sp-4) var(--sp-5);
+}
+
+.mmat-loading {
+  height: 100%;
+  min-height: 12rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray-400);
+}
+
+/* ---------- Selector de año (pestañas) ---------- */
+.mmat-anio-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--gray-200);
+  margin-bottom: var(--sp-3);
+}
+
+.mmat-anio-tab {
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  background: var(--gray-100);
+  color: var(--gray-600);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--duration-300) var(--ease-out),
+    color var(--duration-300) var(--ease-out);
+}
+
+.mmat-anio-tab:hover {
+  background: var(--gray-200);
+}
+
+.mmat-anio-tab.active {
+  background: var(--blue-600);
+  color: var(--color-surface);
+  border-color: var(--blue-600);
+}
+
+.mmat-anio-tab.readonly {
+  cursor: default;
+}
+
+/* ---------- Secciones (Aula / Taller / Especialidad) ---------- */
+.mmat-secciones {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.mmat-section {
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.mmat-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-surface);
+}
+
+.mmat-section-title--aula {
+  background: var(--blue-600);
+}
+
+.mmat-section-title--taller {
+  background: var(--purple-600, #7c3aed);
+}
+
+.mmat-section-title--especialidad {
+  background: var(--teal-600, #0d9488);
+}
+
+.mmat-section-count {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-full);
+  padding: 0 var(--sp-2);
+  font-size: var(--text-xs);
+}
+
+.mmat-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+}
+
+.mmat-empty-sec {
+  color: var(--gray-400);
+  font-size: var(--text-sm);
+  font-style: italic;
+  padding: var(--sp-1);
+}
+
+/* ---------- Tarjeta de materia ---------- */
+.mmat-materia {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-lg);
+  background: var(--gray-50);
+  border: 1px solid var(--gray-100);
+  transition: background-color var(--duration-300) var(--ease-out),
+    border-color var(--duration-300) var(--ease-out);
+}
+
+.mmat-materia:hover {
+  background: var(--blue-50);
+  border-color: var(--blue-200);
+}
+
+.mmat-materia.editando {
+  background: var(--blue-50);
+  border-color: var(--blue-300);
+}
+
+.mmat-nombre {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--blue-800);
+}
+
+.mmat-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-1);
+  border-radius: var(--radius-md);
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: color var(--duration-200) var(--ease-in-out),
+    background-color var(--duration-200) var(--ease-in-out);
+}
+
+.mmat-icon-btn:hover {
+  background: var(--gray-200);
+  color: var(--blue-600);
+}
+
+.mmat-icon-btn.ok:hover {
+  background: var(--green-100);
+  color: var(--green-700);
+}
+
+.mmat-icon-btn.danger:hover {
+  background: var(--red-100);
+  color: var(--red-600);
+}
+
+/* ---------- Chip / select de tipo y especialidad ---------- */
+.mmat-chip {
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--gray-200);
+  background: var(--color-surface);
+  color: var(--gray-700);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.mmat-chip--esp {
+  border-color: var(--teal-300, #5eead4);
+  color: var(--teal-700, #0f766e);
+}
+
+/* ---------- Badge (solo lectura) ---------- */
+.mmat-badge {
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-surface);
+}
+
+.mmat-badge--aula {
+  background: var(--blue-600);
+}
+
+.mmat-badge--taller {
+  background: var(--purple-600, #7c3aed);
+}
+
+.mmat-badge--especialidad {
+  background: var(--teal-600, #0d9488);
+}
+
+/* ---------- Inputs y fila de edición ---------- */
+.mmat-input {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--gray-700);
+  font-size: var(--text-sm);
+  transition: box-shadow var(--duration-200) var(--ease-in-out);
+}
+
+.mmat-input:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--blue-400);
+}
+
+.mmat-edit-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  flex: 1 1 0%;
+  min-width: 12rem;
+}
+
+/* ---------- Agregar materia ---------- */
+.mmat-add {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--gray-200);
+}
+
+.mmat-add .mmat-input {
+  flex: 1 1 12rem;
+}
+
+.mmat-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  background: var(--blue-600);
+  color: var(--color-surface);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: background-color var(--duration-300) var(--ease-out),
+    transform var(--duration-300) var(--ease-out);
+}
+
+.mmat-add-btn:hover {
+  background: var(--blue-700);
+}
+
+.mmat-add-btn:active {
+  transform: scale(0.95);
+}
+
+/* ---------- Footer ---------- */
+.mmat-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-top: 1px solid var(--gray-200);
+}
+
+.mmat-btn {
+  padding: var(--sp-2) var(--sp-6);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--duration-300) var(--ease-out),
+    color var(--duration-300) var(--ease-out),
+    transform var(--duration-300) var(--ease-out);
+}
+
+.mmat-btn:active {
+  transform: scale(0.95);
+}
+
+.mmat-btn.ghost {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.mmat-btn.ghost:hover {
+  background: var(--gray-200);
+}
+
+.mmat-btn.primary {
+  background: var(--blue-600);
+  color: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.mmat-btn.primary:hover {
+  background: var(--blue-700);
+}

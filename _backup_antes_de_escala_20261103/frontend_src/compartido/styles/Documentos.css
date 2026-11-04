@@ -1,0 +1,553 @@
+/* ============================================
+   Documentos — Gestión de documentos
+   ============================================ */
+
+.doc-page {
+  padding: var(--sp-6);
+  background-color: var(--gray-50);
+  min-height: 100%;
+  width: 100%;
+}
+
+.doc-container {
+  max-width: 1280px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ---------- Encabezado ---------- */
+.doc-header {
+  margin-bottom: var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+@media (min-width: 768px) {
+  .doc-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+
+.doc-title {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--gray-900);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+.doc-title-icon {
+  color: var(--blue-600);
+}
+
+.doc-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2-5) var(--sp-4);
+  background-color: var(--blue-600);
+  color: #ffffff;
+  border-radius: var(--radius-xl);
+  transition: background-color var(--duration-150) var(--ease-in-out);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+}
+
+.doc-btn-primary:hover {
+  background-color: var(--blue-700);
+}
+
+.doc-btn-primary:disabled {
+  opacity: 0.5;
+}
+
+.doc-btn-submit {
+  flex: 1 1 0%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+.doc-btn-secondary {
+  padding: var(--sp-2-5) var(--sp-4);
+  background-color: var(--gray-100);
+  color: var(--gray-700);
+  border-radius: var(--radius-xl);
+  transition: background-color var(--duration-150) var(--ease-in-out);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.doc-btn-secondary:hover {
+  background-color: var(--gray-200);
+}
+
+/* ---------- BÃƒÆ’Ã‚Âºsqueda ---------- */
+.doc-search-card {
+  background-color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-6);
+}
+
+.doc-search-wrap {
+  position: relative;
+  max-width: 448px;
+}
+
+.doc-search-icon {
+  position: absolute;
+  left: var(--sp-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--gray-400);
+  pointer-events: none;
+}
+
+.doc-search-input {
+  width: 100%;
+  padding: 0 var(--sp-4) 0 var(--sp-10);
+  height: 42px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  background-color: #ffffff;
+  color: var(--gray-700);
+}
+
+.doc-search-input::placeholder {
+  color: var(--gray-400);
+}
+
+.doc-search-input:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--blue-500);
+  border-color: transparent;
+}
+
+/* ---------- Estados ---------- */
+.doc-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-20) 0;
+  color: var(--gray-400);
+}
+
+/* ---------- Tabla ---------- */
+.doc-table-card {
+  background-color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+}
+
+/* Esquinas redondeadas de la tabla sin overflow:hidden,
+   para que los tooltips de roles no se recorten */
+.doc-thead .doc-th:first-child {
+  border-top-left-radius: var(--radius-xl);
+}
+
+.doc-thead .doc-th:last-child {
+  border-top-right-radius: var(--radius-xl);
+}
+
+.doc-tbody tr:last-child .doc-td:first-child {
+  border-bottom-left-radius: var(--radius-xl);
+}
+
+.doc-tbody tr:last-child .doc-td:last-child {
+  border-bottom-right-radius: var(--radius-xl);
+}
+
+.doc-table {
+  width: 100%;
+  font-size: var(--text-sm);
+  border-collapse: collapse;
+}
+
+.doc-thead {
+  background-color: var(--gray-50);
+  color: var(--gray-600);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+}
+
+.doc-th {
+  text-align: left;
+  font-weight: 600;
+  padding: var(--sp-3) var(--sp-5);
+}
+
+.doc-th-row {
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.doc-th-right {
+  text-align: right;
+}
+
+.doc-th-w5 { width: 5%; }
+.doc-th-w10 { width: 10%; }
+.doc-th-w15 { width: 15%; }
+.doc-th-w20 { width: 20%; }
+.doc-th-w30 { width: 30%; }
+
+.doc-tbody tr + tr {
+  border-top: 1px solid var(--gray-100);
+}
+
+.doc-tr {
+  transition: background-color var(--duration-150) var(--ease-in-out);
+}
+
+.doc-tr:hover {
+  background-color: rgba(239, 246, 255, 0.7);
+}
+
+.doc-td {
+  padding: var(--sp-3) var(--sp-5);
+  vertical-align: middle;
+}
+
+.doc-td-muted {
+  color: var(--gray-500);
+  font-size: var(--text-sm);
+}
+
+.doc-td-user {
+  color: var(--gray-600);
+  font-size: var(--text-sm);
+}
+
+.doc-td-right {
+  text-align: right;
+}
+
+.doc-name {
+  font-weight: 500;
+  color: var(--gray-900);
+}
+
+.doc-filename {
+  font-size: var(--text-xs);
+  color: var(--gray-400);
+  margin-left: var(--sp-2);
+}
+
+.doc-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+}
+
+.doc-action {
+  padding: var(--sp-2);
+  border-radius: var(--radius-lg);
+  transition: background-color var(--duration-150) var(--ease-in-out),
+    color var(--duration-150) var(--ease-in-out);
+  cursor: pointer;
+}
+
+.doc-action-download {
+  color: var(--blue-600);
+}
+
+.doc-action-download:hover {
+  background-color: var(--blue-50);
+}
+
+.doc-action-print {
+  color: var(--gray-600);
+}
+
+.doc-action-print:hover {
+  background-color: var(--gray-100);
+}
+
+.doc-action-delete {
+  color: var(--red-500);
+}
+
+.doc-action-delete:hover {
+  background-color: var(--red-50);
+}
+
+/* ---------- Íconos por tipo de archivo ---------- */
+.doc-icon-pdf {
+  color: var(--red-500);
+}
+
+.doc-icon-sheet {
+  color: var(--green-600);
+}
+
+.doc-icon-image {
+  color: var(--purple-500);
+}
+
+.doc-icon-archive {
+  color: #d97706;
+}
+
+.doc-icon-generic {
+  color: var(--gray-500);
+}
+
+/* ---------- Modal (subir documento) ---------- */
+.doc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+}
+
+.doc-modal {
+  background-color: #ffffff;
+  border-radius: var(--radius-2xl);
+  padding: var(--sp-6);
+  width: 100%;
+  max-width: 448px;
+  max-height: calc(100dvh - var(--sp-6));
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+.doc-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.doc-modal-header .doc-modal-title {
+  margin-bottom: 0;
+}
+
+.doc-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--gray-500);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background-color var(--duration-150) var(--ease-in-out), color var(--duration-150) var(--ease-in-out);
+}
+
+.doc-modal-close:hover {
+  background-color: var(--gray-100);
+  color: var(--gray-900);
+}
+
+.doc-modal-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  margin-bottom: var(--sp-4);
+}
+
+.doc-form > * + * {
+  margin-top: var(--sp-4);
+}
+
+.doc-form-actions {
+  display: flex;
+  gap: var(--sp-2);
+  padding-top: var(--sp-2);
+}
+
+/* ---------- Formulario ---------- */
+.doc-label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--gray-700);
+  margin-bottom: var(--sp-1);
+}
+
+.doc-input {
+  width: 100%;
+  padding: var(--sp-2-5) var(--sp-4);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-xl);
+  font-size: var(--text-sm);
+}
+
+.doc-input:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--blue-500);
+}
+
+.doc-file-input {
+  width: 100%;
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+  cursor: pointer;
+}
+
+.doc-file-input::file-selector-button {
+  margin-right: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  border: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  background-color: var(--blue-50);
+  color: var(--blue-700);
+  cursor: pointer;
+}
+
+.doc-file-input::file-selector-button:hover {
+  background-color: var(--blue-100);
+}
+
+.doc-spin {
+  animation: doc-spin 1s linear infinite;
+}
+
+@keyframes doc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* ---------- Visibilidad por roles ---------- */
+.doc-role-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.doc-role-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1-5) var(--sp-3);
+  border-radius: 9999px;
+  border: 1px solid var(--gray-300);
+  background-color: #ffffff;
+  color: var(--gray-500);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-150) var(--ease-in-out);
+}
+
+.doc-role-toggle:hover {
+  border-color: var(--blue-400);
+  color: var(--blue-600);
+}
+
+.doc-role-toggle-on,
+.doc-role-toggle-on:hover {
+  border-color: var(--blue-600);
+  background-color: var(--blue-600);
+  color: #ffffff;
+}
+
+.doc-role-hint {
+  display: block;
+  margin-top: var(--sp-2);
+  font-size: var(--text-xs);
+  color: var(--amber-600);
+}
+
+.doc-roles-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.doc-roles-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--sp-2);
+  border-radius: 9999px;
+  border: 1px solid var(--gray-200);
+  background-color: var(--gray-100);
+  color: var(--gray-500);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: default;
+  transition: all var(--duration-150) var(--ease-in-out);
+}
+
+.doc-roles-wrap:hover .doc-roles-count,
+.doc-roles-wrap:focus-visible .doc-roles-count {
+  border-color: var(--blue-200);
+  background-color: var(--blue-50);
+  color: var(--blue-700);
+}
+
+.doc-roles-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  background-color: #ffffff;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--duration-150) var(--ease-in-out),
+    visibility var(--duration-150) var(--ease-in-out);
+}
+
+.doc-roles-wrap:hover .doc-roles-pop,
+.doc-roles-wrap:focus-within .doc-roles-pop {
+  opacity: 1;
+  visibility: visible;
+}
+
+.doc-roles-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--sp-2);
+  border-radius: 9999px;
+  background-color: var(--blue-50);
+  color: var(--blue-700);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.doc-roles-chip-me {
+  background-color: var(--emerald-100);
+  color: var(--emerald-700);
+}
+
+.doc-action-edit {
+  color: var(--blue-600);
+}
+
+.doc-action-edit:hover {
+  background-color: var(--blue-50);
+}
+

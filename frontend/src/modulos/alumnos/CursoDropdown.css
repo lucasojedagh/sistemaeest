@@ -1,0 +1,80 @@
+/* ============================================
+   CursoDropdown.jsx - Selector de curso (año y división)
+   ============================================ */
+
+/* ---------- Contenedor ---------- */
+.curso-dropdown-wrap {
+  position: relative;
+}
+
+/* ---------- Botón disparador ---------- */
+.curso-dropdown-btn {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid #000;
+  border-radius: var(--radius);
+  text-align: left;
+  background-color: var(--color-surface);
+  transition: color 150ms var(--ease-in-out), background-color 150ms var(--ease-in-out),
+    border-color 150ms var(--ease-in-out);
+}
+
+.curso-dropdown-btn:hover {
+  background-color: var(--gray-50);
+}
+
+.curso-dropdown-btn-error {
+  border-color: var(--red-500);
+}
+
+/* ---------- Panel ---------- */
+.curso-dropdown-panel {
+  position: absolute;
+  z-index: 10;
+  margin-top: var(--sp-1);
+  width: 100%;
+  background-color: var(--color-surface);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-height: 192px;
+  overflow-y: auto;
+}
+
+/* ---------- Encabezado de grupo ---------- */
+.curso-dropdown-group-label {
+  padding: var(--sp-1) var(--sp-4);
+  font-size: var(--text-xs);
+  color: var(--gray-500);
+  font-weight: 600;
+  background-color: var(--gray-50);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* ---------- Opciones ---------- */
+.curso-dropdown-option {
+  padding: var(--sp-2) var(--sp-4);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.curso-dropdown-option:hover {
+  background-color: var(--blue-50);
+}
+
+/* ---------- Movil: el panel se apoya en el pie de la pantalla. Abierto hacia
+     abajo quedaba fuera de la ventana cuando el filtro esta abajo. ---------- */
+@media (max-width: 640px) {
+  .curso-dropdown-panel {
+    position: fixed;
+    left: var(--sp-3);
+    right: var(--sp-3);
+    top: auto;
+    bottom: var(--sp-3);
+    margin-top: 0;
+    width: auto;
+    max-height: 55dvh;
+  }
+}

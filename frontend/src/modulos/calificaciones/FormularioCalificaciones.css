@@ -1,0 +1,525 @@
+.fc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.fc-modal {
+  background: #fff;
+  width: min(920px, 100%);
+  max-height: calc(100dvh - var(--sp-6));
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fc-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+
+.fc-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.fc-subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #64748b;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.fc-dot {
+  color: #cbd5e1;
+}
+
+.fc-params {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.fc-param {
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+}
+
+.fc-param b {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.fc-icon-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #64748b;
+  border-radius: 8px;
+  padding: 4px;
+  display: inline-flex;
+  transition: background 0.15s, color 0.15s;
+}
+
+.fc-icon-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.fc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 22px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+}
+
+.fc-motivo {
+  flex: 1 1 240px;
+  min-width: 200px;
+  padding: 9px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.fc-motivo:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.fc-toolbar-actions {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.fc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.fc-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.fc-btn-primary {
+  background: #2563eb;
+  color: #fff;
+}
+
+.fc-btn-primary:not(:disabled):hover {
+  background: #1d4ed8;
+}
+
+.fc-btn-ghost {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.fc-btn-ghost:not(:disabled):hover {
+  background: #e2e8f0;
+}
+
+.fc-body {
+  padding: 16px 22px 24px;
+  overflow-y: auto;
+}
+
+.fc-state {
+  padding: 40px 0;
+  text-align: center;
+  color: #64748b;
+  font-size: 15px;
+}
+
+.fc-state-error {
+  color: #b91c1c;
+}
+
+.fc-link {
+  background: none;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 15px;
+}
+
+.fc-student {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  background: #fff;
+}
+
+.fc-student-name {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+
+.fc-periods {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 18px;
+}
+
+@media (max-width: 900px) {
+  .fc-periods {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .fc-periods {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fc-period-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.fc-period-avg {
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.fc-period-final {
+  margin-top: 16px;
+  padding-top: 16px;
+  border: 1px solid #f59e0b;
+  background-color: #fffbeb;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.15);
+}
+
+.fc-period-final .fc-period-head {
+  color: #b45309;
+  justify-content: flex-start;
+}
+
+.fc-note-input-final {
+  max-width: 160px;
+  font-weight: 700;
+}
+
+.fc-note-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.fc-note-input {
+  width: 110px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.fc-note-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.fc-icon-btn-sm {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 4px;
+  border-radius: 6px;
+  display: inline-flex;
+  transition: background 0.15s, color 0.15s;
+}
+
+.fc-icon-btn-sm:hover:not(:disabled) {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.fc-icon-btn-sm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.fc-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  color: #475569;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.fc-add-btn:hover {
+  background: #eef2ff;
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.fc-final-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #b45309;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.fc-note-input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+/* ===== Modal de configuracion de ventana de nota final ===== */
+.ventana-modal {
+  max-width: 520px;
+}
+
+.ventana-modal .fc-header {
+  padding: 16px 28px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+
+.ventana-modal .ventana-desc {
+  padding: 20px 28px 0;
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.ventana-modal .ventana-grid {
+  padding: 16px 28px 0;
+}
+
+.ventana-modal .ventana-actions {
+  padding: 20px 28px 4px;
+}
+
+.ventana-desc {
+  font-size: 13px;
+  color: #475569;
+  margin: 4px 0 12px;
+  line-height: 1.4;
+}
+
+.ventana-estado {
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0 0 12px;
+}
+
+.ventana-estado-abierta {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.ventana-estado-cerrada {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.ventana-presets {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.ventana-presets-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.ventana-preset {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.ventana-preset:hover {
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.ventana-error {
+  font-size: 13px;
+  font-weight: 600;
+  color: #dc2626;
+  margin: 12px 0 0;
+}
+
+.ventana-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.ventana-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.ventana-field input {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.ventana-field input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.ventana-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.fc-btn-cancel,
+.fc-btn-save,
+.fc-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.fc-btn-cancel {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #e2e8f0;
+}
+
+.fc-btn-cancel:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.fc-btn-save {
+  background: #2563eb;
+  color: #fff;
+}
+
+.fc-btn-save:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.fc-btn-danger {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.fc-btn-danger:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.fc-btn-cancel:disabled,
+.fc-btn-save:disabled,
+.fc-btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ---------- Celular: campos grandes para cargar notas parado en el aula ---------- */
+@media (max-width: 620px) {
+  .fc-note-input {
+    min-height: 52px;
+    min-width: 64px;
+    font-size: 18px;
+    text-align: center;
+  }
+
+  .fc-btn-save,
+  .fc-btn-cancel,
+  .fc-btn-danger {
+    width: 100%;
+    min-height: 52px;
+    font-size: 16px;
+    justify-content: center;
+  }
+
+  .fc-student {
+    padding: 12px;
+  }
+}

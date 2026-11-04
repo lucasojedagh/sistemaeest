@@ -1,0 +1,51 @@
+/* Aviso de conexion: barrita chica abajo, gris, que se superpone y no molesta.
+   - position: fixed para que quede pegada abajo aunque se scrollee.
+   - pointer-events: none para que nunca impida tocar un boton que quede debajo.
+*/
+.offline-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  animation: offline-banner-entra 0.2s ease-out;
+}
+
+@keyframes offline-banner-entra {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Gris sobrio: informa sin asustar. */
+.offline-banner-off {
+  background-color: #4b5563;
+  color: #f9fafb;
+  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.18);
+}
+
+/* Aviso de que volvio la conexion: mismo tamaño, solo un verde atenuado. */
+.offline-banner-ok {
+  background-color: #065f46;
+  color: #ecfdf5;
+  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.18);
+}
+
+/* En pantallas chicas el texto se parte en dos lineas, no en cinco. */
+@media (max-width: 480px) {
+  .offline-banner {
+    font-size: 11px;
+    padding: 5px 8px;
+    gap: 6px;
+  }
+}

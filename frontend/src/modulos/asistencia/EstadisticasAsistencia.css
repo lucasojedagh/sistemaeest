@@ -1,0 +1,315 @@
+/* ============================================
+   EstadisticasAsistencia.jsx - Estadísticas de asistencia
+   ============================================ */
+
+/* ---------- Contenedor ---------- */
+.estad-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* ---------- Tarjeta de filtros ---------- */
+.estad-filters-card {
+  background-color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-6);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3);
+}
+
+.estad-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--gray-500);
+  margin-bottom: var(--sp-1);
+}
+
+.estad-year-input {
+  height: 42px;
+  padding: var(--sp-2) var(--sp-3);
+  width: var(--sp-24);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--gray-200);
+  background-color: #ffffff;
+  font-size: var(--text-sm);
+  color: var(--gray-700);
+  outline: none;
+}
+
+.estad-year-input:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--blue-500);
+  border-color: transparent;
+}
+
+/* ---------- Estado de carga ---------- */
+.estad-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: var(--sp-10);
+  padding-bottom: var(--sp-10);
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+  gap: var(--sp-2);
+}
+
+.estad-loading-icon {
+  width: 16px;
+  height: 16px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Tarjetas de totales ---------- */
+.estad-totales-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+@media (min-width: 768px) {
+  .estad-totales-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .estad-totales-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.estad-total-card {
+  background-color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.estad-total-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--gray-500);
+  font-weight: 600;
+}
+
+.estad-total-value {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--gray-800);
+}
+
+/* ---------- Evolución mensual ---------- */
+.estad-evolucion-card {
+  background-color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-6);
+}
+
+.estad-evolucion-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--gray-700);
+  margin-bottom: var(--sp-4);
+}
+
+.estad-evolucion-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--blue-600);
+}
+
+.estad-evolucion-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.estad-evolucion-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.estad-evolucion-mes {
+  flex: 0 0 92px;
+  font-size: var(--text-xs);
+  color: var(--gray-500);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.estad-evolucion-bar {
+  flex: 1 1 0%;
+  min-width: 60px;
+  height: 10px;
+  background-color: var(--gray-100);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.estad-evolucion-fill {
+  height: 100%;
+  background-image: linear-gradient(to right, var(--blue-400), var(--blue-600));
+  border-radius: var(--radius-full);
+  transition: all 150ms var(--ease-in-out);
+}
+
+.estad-evolucion-value {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--gray-600);
+  text-align: right;
+}
+
+.estad-evolucion-value strong {
+  color: var(--gray-800);
+  font-weight: 700;
+}
+
+@media (max-width: 560px) {
+  .estad-evolucion-row {
+    flex-wrap: wrap;
+    row-gap: var(--sp-1-5);
+  }
+
+  .estad-evolucion-mes {
+    flex: 0 0 auto;
+  }
+
+  .estad-evolucion-bar {
+    flex: 1 1 100%;
+    order: 3;
+  }
+}
+
+/* ---------- Rankings ---------- */
+.estad-rank-grid {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+@media (min-width: 1024px) {
+  .estad-rank-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.estad-rank-card {
+  background-color: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
+  overflow: hidden;
+}
+
+.estad-rank-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--gray-100);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--gray-700);
+}
+
+.estad-rank-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.estad-rank-icon-danger {
+  color: var(--red-500);
+}
+
+.estad-rank-icon-success {
+  color: var(--green-600);
+}
+
+.estad-rank-empty {
+  padding: var(--sp-8) var(--sp-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--gray-400);
+}
+
+.estad-rank-list > * + * {
+  border-top: 1px solid var(--gray-50);
+}
+
+.estad-rank-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2-5) var(--sp-4);
+}
+
+.estad-rank-pos {
+  width: var(--sp-6);
+  height: var(--sp-6);
+  border-radius: var(--radius-lg);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.estad-rank-pos-top {
+  background-color: var(--blue-50);
+  color: var(--blue-600);
+}
+
+.estad-rank-pos-rest {
+  background-color: var(--gray-50);
+  color: var(--gray-500);
+}
+
+.estad-rank-name {
+  flex: 1 1 0%;
+  font-size: var(--text-sm);
+  color: var(--gray-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.estad-rank-pct {
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.estad-rank-pct-danger {
+  color: var(--red-600);
+}
+
+.estad-rank-pct-success {
+  color: var(--green-600);
+}

@@ -1,0 +1,116 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: enro-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: sistema_escuela
+      # La clave del servidor se define en un archivo .env junto a este
+      # docker-compose.yml (ENRO_DB_PASSWORD=...); el valor por defecto es solo
+      # para no romper los desarrollos que hoy usan root/root.
+      MYSQL_ROOT_PASSWORD: ${ENRO_DB_PASSWORD:-root}
+    ports:
+      # 127.0.0.1 OBLIGATORIO en el server: sin el prefijo, Docker publica el
+      # puerto en todas las interfaces y cualquier equipo de la red del colegio
+      # podría entrar a la base de datos de 1200 alumnos con root._backend solo
+      # la necesita por la red interna del compose (host "mysql"), no por este
+      # mapeo; el 127.0.0.1 queda solo para herramientas del propio server.
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${ENRO_DB_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./docker/backend
+      dockerfile: Dockerfile
+    container_name: enro-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./backend:/var/www
+    # backend/.env.docker es la config oficial en Docker (APP_KEY, sesión,
+    # correo, FRONTEND_URL). Las DB_* de abajo pisan por seguridad explícita.
+    env_file:
+      - ./backend/.env.docker
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_DATABASE=sistema_escuela
+      - DB_USERNAME=root
+      # Misma clave del servicio mysql: las dos salen del mismo .env, así no se
+      # desincronizan (si una cambia y la otra no, el backend queda con 500).
+      - DB_PASSWORD=${ENRO_DB_PASSWORD:-root}
+
+  nginx:
+    image: nginx:alpine
+    container_name: enro-nginx
+    restart: unless-stopped
+    ports:
+      # Punto de entrada ÚNICO del sistema en la red de la institución:
+      # http://<host>:8000/ -> SPA, y http://<host>:8000/api -> Laravel.
+      # En el server se suele querer el 80 (los preceptores escriben solo la IP):
+      # ENRO_HTTP_PORT=80 en el .env del compose, sin editar este archivo.
+      - "${ENRO_HTTP_PORT:-8000}:80"
+    depends_on:
+      - backend
+      # default.conf hace `proxy_pass http://frontend`: nginx necesita resolver
+      # ese nombre al leer la config, o sea que el frontend tiene que arrancar
+      # antes (si no, nginx falla al iniciar con "host not found in upstream").
+      - frontend
+    volumes:
+      - ./backend:/var/www
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
+  # Bandeja local de correos (recupero de contraseña, backups por email).
+  # UI en http://127.0.0.1:8025 — no guarda nada, solo para desarrollo.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: enro-mailpit
+    restart: unless-stopped
+    ports:
+      # Solo loopback: el backend llega por la red interna (host "mailpit").
+      # Publicado en todas las interfaces, cualquier equipo de la red podría
+      # (a) enviar correos suplantando al colegio por el 1025 y (b) abrir la
+      # bandeja del 8025 y leer los links de recupero de contraseña.
+      # En producción real con SMTP del colegio, este servicio sobra:
+      #   docker compose up -d --scale mailpit=0
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      # VITE_API_BASE se quema en el bundle AL COMPILAR (no sirve ponerla como
+      # variable de entorno del servicio: la imagen final es nginx estático).
+      # "/api" = mismo origen: la app le pide la API al host que le sirve la
+      # página, es decir este nginx, que la reenvía a Laravel. Así el sistema
+      # queda publicable en la red del colegio sin localhost hardcodeado.
+      # Backend en otro host: cambiar este valor y `docker compose build frontend`.
+      args:
+        VITE_API_BASE: /api
+    container_name: enro-frontend
+    restart: unless-stopped
+    ports:
+      # Antes publicaba el dev server de Vite (5173); ahora expone el build
+      # estático (puerto 80 interno) solo para revisar el contenedor por
+      # separado. El acceso real del colegio es el nginx de arriba (:8000).
+      # Si levantas `npm run dev` en la máquina para desarrollar, no subas este
+      # servicio a la vez: los dos quieren el puerto 5173 del host.
+      - "5173:80"
+    # Sin volúmenes: el `dist` va DENTRO de la imagen (lo genera la etapa build
+    # del Dockerfile). Montar ./frontend sería un error de producción: el código
+    # fuente quedaría editable en caliente y el nginx interno no leería de ahí.
+    # Para desarrollo se sigue usando `npm run dev` (HMR en :5173), no este servicio.
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:

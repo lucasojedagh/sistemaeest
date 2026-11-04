@@ -1,0 +1,222 @@
+/* ============================================
+   ModalPromocion.jsx - Cambio de ciclo lectivo
+   ============================================ */
+
+/* ---------- Overlay y modal ---------- */
+/* La opacidad de entrada se anima por CSS: con initial={{opacity:0}} de Framer
+   queda opacity:0 en el style inline y al terminar la animacion WAAPI hay un
+   frame con el modal transparente. Con fill "backwards" el reposo vuelve a 1. */
+@keyframes mpromo-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.mpromo-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(2px);
+  animation: mpromo-fade-in 300ms ease-out backwards;
+  /* margen para que el modal no quede pegado al borde en pantallas cortas */
+  padding: var(--sp-3);
+}
+
+.mpromo-dialog {
+  width: 100%;
+  max-width: 48rem;
+  max-height: calc(100dvh - var(--sp-6));
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-2xl);
+  border: 1px solid var(--gray-200);
+  overflow: hidden;
+  animation: mpromo-fade-in 300ms ease-out backwards;
+}
+
+/* ---------- Header ---------- */
+.mpromo-header {
+  padding: var(--sp-4) var(--sp-6);
+  border-bottom: 1px solid var(--gray-200);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mpromo-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--blue-900);
+}
+
+.mpromo-subtitle {
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+}
+
+.mpromo-close {
+  padding: var(--sp-2);
+  border-radius: var(--radius-lg);
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: color var(--duration-300) var(--ease-out),
+    background-color var(--duration-300) var(--ease-out),
+    transform var(--duration-300) var(--ease-out);
+}
+
+.mpromo-close:hover {
+  background: var(--gray-100);
+}
+
+.mpromo-close:active {
+  transform: scale(0.95);
+}
+
+/* ---------- Body ---------- */
+.mpromo-body {
+  padding: var(--sp-6);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.mpromo-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: var(--sp-4);
+}
+
+@media (min-width: 768px) {
+  .mpromo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ---------- Tarjetas de acción ---------- */
+.mpromo-card {
+  border-radius: var(--radius-2xl);
+  border: 1px solid;
+  padding: var(--sp-5);
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--duration-150) var(--ease-in-out),
+    background-color var(--duration-150) var(--ease-in-out),
+    border-color var(--duration-150) var(--ease-in-out),
+    box-shadow var(--duration-150) var(--ease-in-out),
+    transform var(--duration-150) var(--ease-in-out);
+}
+
+.mpromo-card:active {
+  transform: scale(0.99);
+}
+
+.mpromo-card:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.mpromo-card--up {
+  border-color: rgba(191, 219, 254, 0.7);
+  background: rgba(239, 246, 255, 0.6);
+}
+
+.mpromo-card--up:hover {
+  background: var(--blue-100);
+}
+
+.mpromo-card--up:focus {
+  box-shadow: 0 0 0 4px rgba(191, 219, 254, 0.6);
+}
+
+.mpromo-card--down {
+  border-color: rgba(221, 214, 254, 0.7);
+  background: rgba(245, 243, 255, 0.6);
+}
+
+.mpromo-card--down:hover {
+  background: var(--violet-100);
+}
+
+.mpromo-card--down:focus {
+  box-shadow: 0 0 0 4px rgba(221, 214, 254, 0.6);
+}
+
+.mpromo-card-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+
+.mpromo-card-icon {
+  padding: var(--sp-3);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), var(--shadow-sm);
+}
+
+.mpromo-card-icon--up {
+  background: rgba(191, 219, 254, 0.8);
+}
+
+.mpromo-card-icon--down {
+  background: rgba(221, 214, 254, 0.8);
+}
+
+.mpromo-icon-up {
+  color: var(--blue-700);
+}
+
+.mpromo-icon-down {
+  color: var(--violet-700);
+}
+
+.mpromo-card-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--blue-900);
+}
+
+.mpromo-card-title--down {
+  color: var(--violet-900);
+}
+
+.mpromo-card-text {
+  font-size: var(--text-sm);
+  color: var(--gray-700);
+  margin-top: var(--sp-1);
+}
+
+/* ---------- Aviso ---------- */
+.mpromo-aviso {
+  margin-top: var(--sp-6);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--amber-200);
+  background: var(--amber-50);
+  padding: var(--sp-3) var(--sp-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  color: var(--amber-900);
+}
+
+.mpromo-aviso-icon {
+  margin-top: 2px;
+}
+
+.mpromo-aviso-text {
+  font-size: var(--text-sm);
+}
+
+/* ---------- Texto de confirmación SweetAlert ---------- */
+.mpromo-swal-text {
+  font-size: var(--text-sm);
+  color: var(--gray-700);
+}
+
+.mpromo-swal-row {
+  margin-bottom: var(--sp-1);
+}
