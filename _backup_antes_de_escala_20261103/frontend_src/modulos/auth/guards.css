@@ -1,8 +1,0 @@
-/* ============================================
-   Guards — Estado de carga de rutas protegidas
-   ============================================ */
-
-.guard-loading {
-  padding: var(--sp-6);
-  color: var(--gray-500);
-}
