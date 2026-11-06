@@ -29,6 +29,8 @@ class EnsureRoleTest extends TestCase
         $this->assertSame(200, $this->runMiddleware('directivo', ['admin', 'jefe_preceptores']));
         $this->assertSame(200, $this->runMiddleware('admin', ['admin', 'jefe_preceptores']));
         $this->assertSame(200, $this->runMiddleware('jefe_preceptores', ['admin', 'jefe_preceptores']));
+        // La prosecretaria tiene el mismo nivel operativo que el jefe: pasa los mismos grupos.
+        $this->assertSame(200, $this->runMiddleware('prosecretaria', ['admin', 'jefe_preceptores']));
         $this->assertSame(403, $this->runMiddleware('preceptor', ['admin', 'jefe_preceptores']));
         $this->assertSame(403, $this->runMiddleware('profesor', ['admin', 'jefe_preceptores']));
         $this->assertSame(403, $this->runMiddleware('sin_rol', ['admin', 'jefe_preceptores']));

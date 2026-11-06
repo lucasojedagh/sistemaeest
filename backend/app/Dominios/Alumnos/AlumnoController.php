@@ -146,7 +146,8 @@ class AlumnoController extends Controller
                 $qq->where('nombre', 'like', $like)
                    ->orWhere('apellido', 'like', $like)
                    ->orWhere('dni', 'like', $like)
-                   ->orWhere('matricula', 'like', $like);
+                   ->orWhere('matricula', 'like', $like)
+                   ->orWhere('email', 'like', $like);
             });
         }
 
@@ -166,6 +167,7 @@ class AlumnoController extends Controller
                 'nacionalidad'     => $a->nacionalidad,
                 'dni'              => $a->dni,
                 'matricula'        => $a->matricula,
+                'email'              => $a->email,
                 'fecha_nacimiento' => $a->fecha_nacimiento?->format('Y-m-d'),
                 'creado_en'        => $a->created_at?->toDateTimeString(),
                 // Version de concurrencia: el formulario la devuelve en _version
@@ -248,6 +250,7 @@ class AlumnoController extends Controller
             'nacionalidad'     => $alumno->nacionalidad,
             'dni'              => $alumno->dni,
             'matricula'        => $alumno->matricula,
+            'email'              => $alumno->email,
             'fecha_nacimiento' => $alumno->fecha_nacimiento?->format('Y-m-d'),
             'anio'             => $anioLabel,
             'anio_num'         => $alumno->anio,
@@ -313,6 +316,7 @@ class AlumnoController extends Controller
                 'nacionalidad'     => $data['nacionalidad'] ?? null,
                 'dni'              => $data['dni'] ?? null,
                 'matricula'        => $data['matricula'] ?? null,
+                'email'              => $data['email'] ?? null,
                 'fecha_nacimiento' => $data['fecha_nacimiento'] ?? null,
                 'anio'             => $data['anio'] ?? null,
                 'division'         => $data['division'] ?? null, // ya viene normalizada
@@ -378,6 +382,7 @@ class AlumnoController extends Controller
                 'nacionalidad'     => $alumno->nacionalidad,
                 'dni'              => $alumno->dni,
                 'matricula'        => $alumno->matricula,
+                'email'              => $alumno->email,
                 'fecha_nacimiento' => $alumno->fecha_nacimiento?->format('Y-m-d'),
                 'anio'             => $anioLabel,
                 'anio_num'         => $alumno->anio,
@@ -435,6 +440,7 @@ class AlumnoController extends Controller
                 'nacionalidad'     => $alumno->nacionalidad,
                 'dni'              => $alumno->dni,
                 'matricula'        => $alumno->matricula,
+                'email'              => $alumno->email,
                 'fecha_nacimiento' => $alumno->fecha_nacimiento?->format('Y-m-d'),
                 'anio'             => $alumno->anio,
                 'division'         => $alumno->division,
@@ -468,6 +474,7 @@ class AlumnoController extends Controller
                 'nacionalidad'     => $data['nacionalidad'] ?? null,
                 'dni'              => $data['dni'] ?? null,
                 'matricula'        => $data['matricula'] ?? null,
+                'email'              => $data['email'] ?? null,
                 'fecha_nacimiento' => $data['fecha_nacimiento'] ?? null,
                 'anio'             => $data['anio'] ?? null,
                 'division'         => $data['division'] ?? null,
@@ -568,6 +575,7 @@ class AlumnoController extends Controller
                     'nacionalidad'     => $alumno->nacionalidad,
                     'dni'              => $alumno->dni,
                     'matricula'        => $alumno->matricula,
+                    'email'              => $alumno->email,
                     'fecha_nacimiento' => $alumno->fecha_nacimiento?->format('Y-m-d'),
                     'anio'             => $alumno->anio,
                     'division'         => $alumno->division,
@@ -588,11 +596,24 @@ class AlumnoController extends Controller
     }
 
     // Elimina un alumno y todos sus datos asociados (direcciones, telefonos, recursadas, intensificaciones, responsables).
+    // Solo permite borrar fichas sin historial: las notas, la asistencia y los
+    // promedios se conservan siempre en la base de datos.
     // DELETE /api/alumnos/{alumno}
     public function destroy(Request $req, Alumno $alumno)
     {
         // Borrado en cascada irreversible: exige contraseña reciente.
         $this->assertPasswordConfirmed($req);
+
+        // Borrar la fila arrastra por cascada todo lo que el alumno generó en la
+        // escuela. Ese historico no se elimina: para retirar a un alumno con
+        // datos esta la etiqueta Egresado, que solo marca y no borra nada.
+        $historial = $this->contarHistorialAlumno((int) $alumno->id);
+        if (array_sum($historial) > 0) {
+            return response()->json([
+                'message'   => $this->mensajeAlumnoConHistorial($alumno, $historial),
+                'historial' => $historial,
+            ], 422);
+        }
 
         $nombre = $alumno->apellido . ', ' . $alumno->nombre;
         return DB::transaction(function () use ($alumno, $req, $nombre) {
@@ -607,6 +628,40 @@ class AlumnoController extends Controller
 
             return response()->json(['ok' => true]);
         });
+    }
+
+    /** Filas que la base se llevaría por cascada al borrar al alumno. */
+    private function contarHistorialAlumno(int $alumnoId): array
+    {
+        return [
+            'notas'      => DB::table('alumno_calificaciones')->where('alumno_id', $alumnoId)->count(),
+            'asistencia' => DB::table('asistencias')->where('alumno_id', $alumnoId)->count(),
+            'promedios'  => DB::table('alumno_promedios')->where('alumno_id', $alumnoId)->count(),
+            'materias'   => DB::table('alumno_materias_estado')->where('alumno_id', $alumnoId)->count(),
+            'horario'    => DB::table('alumno_horario_overrides')->where('alumno_id', $alumnoId)->count(),
+        ];
+    }
+
+    /** Por qué no se pudo eliminar un alumno con datos, en lenguaje de secretaría. */
+    private function mensajeAlumnoConHistorial(Alumno $alumno, array $h): string
+    {
+        $plural = fn (int $n, string $uno, string $varios) => $n . ' ' . ($n === 1 ? $uno : $varios);
+
+        $pedazos = [];
+        if ($h['notas'] > 0)      $pedazos[] = $plural($h['notas'], 'nota', 'notas');
+        if ($h['asistencia'] > 0) $pedazos[] = $plural($h['asistencia'], 'registro de asistencia', 'registros de asistencia');
+        if ($h['promedios'] > 0)  $pedazos[] = $plural($h['promedios'], 'promedio', 'promedios');
+        if ($h['materias'] > 0)   $pedazos[] = $plural($h['materias'], 'materia con estado', 'materias con estado');
+        if ($h['horario'] > 0)    $pedazos[] = $plural($h['horario'], 'turno de horario propio', 'turnos de horario propio');
+
+        // El aviso se lee en la pantalla: se muestran los tres rubros más
+        // importantes y se cierra con "y más" si queda algo más cargado.
+        $deMas = count($pedazos) > 3;
+        $resumen = implode(', ', array_slice($pedazos, 0, 3)) . ($deMas ? ' y más' : '');
+
+        return $alumno->apellido . ', ' . $alumno->nombre . ' tiene ' . $resumen
+            . ' guardados y el sistema no elimina ese histórico.'
+            . ' Si el alumno ya no cursa, ponele la etiqueta Egresado: sus datos quedan intactos.';
     }
 
     // Marca a un alumno como egresado, registrando el anio lectivo, el anio y la division desde la que egresa.
@@ -663,6 +718,12 @@ class AlumnoController extends Controller
             $t = trim((string) $input[$campoTexto]);
             $input[$campoTexto] = $t === '' ? null : $t;
         }
+        // El mail se guarda sin espacios y en minúsculas: "Juan@Cooperadora.Ar" y
+        // "juan@cooperadora.ar" son la misma casilla y no pueden ser dos registros.
+        if (array_key_exists('email', $input)) {
+            $t = trim(preg_replace('/\s+/u', '', (string) $input['email']) ?? '');
+            $input['email'] = $t === '' ? null : mb_strtolower($t, 'UTF-8');
+        }
         if (isset($input['responsables']) && is_array($input['responsables'])) {
             foreach ($input['responsables'] as &$r) {
                 $p = isset($r['parentesco']) ? trim((string)$r['parentesco']) : '';
@@ -679,6 +740,7 @@ class AlumnoController extends Controller
             'nacionalidad'     => ['nullable','string','max:60'],
             'dni'              => ['nullable','string','max:20', Rule::unique('alumnos','dni')->ignore($ignoreId)],
             'matricula'        => ['nullable','string','max:30'],
+            'email'            => ['nullable','email:rfc','max:120'],
             'fecha_nacimiento' => ['nullable','date'],
             'anio'             => ['required','integer','min:1','max:'.$maxAnio],
             'division'         => ['nullable','string','size:1'],
@@ -718,6 +780,8 @@ class AlumnoController extends Controller
 
         $messages = [
             'anio.max'                   => "El año no puede ser mayor que {$maxAnio} (tope activo).",
+            'email.email'                => 'El correo electrónico no parece válido. Ejemplo: alumno@correo.com',
+            'email.max'                  => 'El correo electrónico es demasiado largo (máximo 120 caracteres).',
             'recursando.*.anio.max'      => "El año de 'recursando' no puede ser mayor que {$maxAnio}.",
             'intensificacion.*.anio.max' => "El año de 'intensificación' no puede ser mayor que {$maxAnio}.",
         ];
@@ -828,7 +892,8 @@ class AlumnoController extends Controller
                 $qq->where('nombre', 'like', $like)
                    ->orWhere('apellido', 'like', $like)
                    ->orWhere('dni', 'like', $like)
-                   ->orWhere('matricula', 'like', $like);
+                   ->orWhere('matricula', 'like', $like)
+                   ->orWhere('email', 'like', $like);
             });
         }
         if (in_array($genero, ['F', 'M', 'O'], true)) $query->where('genero', $genero);
@@ -951,6 +1016,7 @@ class AlumnoController extends Controller
             // formato de número" y se puede ordenar o buscar sin convertir.
             'dni'              => ctype_digit((string) $a->dni) ? (int) $a->dni : $a->dni,
             'matricula'        => $a->matricula,
+            'email'              => $a->email,
             'nacionalidad'     => $a->nacionalidad,
             'genero'           => $a->genero,
             'fecha_nacimiento' => $fecha,

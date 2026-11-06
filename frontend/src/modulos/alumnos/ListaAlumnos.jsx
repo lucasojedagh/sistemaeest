@@ -2,7 +2,6 @@
 // FILE: src/components/Alumnos/ListaAlumnos.jsx
 // ===============================
 import React, { useRef, useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { BookOpen, Eye, CalendarClock, UserCircle, Pencil, UserPlus, SearchX } from 'lucide-react';
 import { cursoLabel, parseCurso, especialidadLabel } from '../../compartido/lib/cursos';
 import EmptyState from '../../compartido/componentes/Common/EmptyState';
@@ -246,19 +245,13 @@ const ListaAlumnos = ({ alumnos = [], onMostrarDetalle, onVerFicha, onOpenCronog
                                   {dniFormateado}
                                 </span>
                               </div>
-                              <AnimatePresence>
-                                {dniFocusId === alumno.id && (
-                                  <motion.div
-                                    initial={{ scale: 0.95, y: dniPlacement === 'top' ? -6 : 6 }}
-                                    animate={{ scale: 1, y: 0 }}
-                                    exit={{ opacity: 0, scale: 0.98, y: dniPlacement === 'top' ? -6 : 6 }}
-                                    transition={{ duration: 0.18, ease: 'easeOut' }}
-                                    className={`lista-alumnos-popover ${dniPlacement === 'top' ? 'lista-alumnos-popover-top' : 'lista-alumnos-popover-bottom'}`}
-                                  >
-                                    <div className="lista-alumnos-popover-value">{dniFormateado}</div>
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
+                              {dniFocusId === alumno.id && (
+                                <div
+                                  className={`lista-alumnos-popover ${dniPlacement === 'top' ? 'lista-alumnos-popover-top' : 'lista-alumnos-popover-bottom'}`}
+                                >
+                                  <div className="lista-alumnos-popover-value">{dniFormateado}</div>
+                                </div>
+                              )}
                             </div>
 
                             {/* Curso */}
@@ -277,19 +270,13 @@ const ListaAlumnos = ({ alumnos = [], onMostrarDetalle, onVerFicha, onOpenCronog
                                   {formatearCurso(cursoMostrar)}
                                 </span>
                               </div>
-                              <AnimatePresence>
-                                {courseFocusId === alumno.id && (
-                                  <motion.div
-                                    initial={{ scale: 0.95, y: coursePlacement === 'top' ? -6 : 6 }}
-                                    animate={{ scale: 1, y: 0 }}
-                                    exit={{ opacity: 0, scale: 0.98, y: coursePlacement === 'top' ? -6 : 6 }}
-                                    transition={{ duration: 0.18, ease: 'easeOut' }}
-                                    className={`lista-alumnos-popover ${coursePlacement === 'top' ? 'lista-alumnos-popover-top' : 'lista-alumnos-popover-bottom'}`}
-                                  >
-                                    <div className="lista-alumnos-popover-value">{formatearCurso(cursoMostrar)}</div>
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
+                              {courseFocusId === alumno.id && (
+                                <div
+                                  className={`lista-alumnos-popover ${coursePlacement === 'top' ? 'lista-alumnos-popover-top' : 'lista-alumnos-popover-bottom'}`}
+                                >
+                                  <div className="lista-alumnos-popover-value">{formatearCurso(cursoMostrar)}</div>
+                                </div>
+                              )}
                             </div>
 
                             {/* Badge de grupo (A/B): se muestra solo si el alumno tiene grupo asignado */}
@@ -329,11 +316,11 @@ const ListaAlumnos = ({ alumnos = [], onMostrarDetalle, onVerFicha, onOpenCronog
                           const puedeEditar = !puedeEditarAlumno || puedeEditarAlumno(alumno);
                           return (
                             <button
-                              onClick={() => !esEgresado && puedeEditar && onOpenCronograma(alumno)}
+                              onClick={() => !esEgresado && onOpenCronograma(alumno)}
                               className={`lista-alumnos-btn-horario ${esEgresado ? 'lista-alumnos-btn-horario-egresado' : 'lista-alumnos-btn-horario-activo'}`}
-                              title={esEgresado ? 'Alumno egresado (no tiene horario activo)' : (puedeEditar ? 'Ver cronograma' : 'Solo podés editar alumnos de tus cursos asignados')}
+                              title={esEgresado ? 'Alumno egresado (no tiene horario activo)' : (puedeEditar ? 'Ver cronograma' : 'Ver cronograma (solo lectura: no podés editar este curso)')}
                               aria-label={`Ver cronograma de ${alumno?.nombre || 'alumno'}`}
-                              disabled={esEgresado || !puedeEditar}
+                              disabled={esEgresado}
                             >
                               <CalendarClock size={20} />
                             </button>

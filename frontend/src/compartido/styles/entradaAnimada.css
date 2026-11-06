@@ -1,0 +1,50 @@
+/* ============================================
+   Entrada animada de vistas, secciones y tarjetas
+   --------------------------------------------
+   Estas capas entraban con Framer Motion
+   (initial={{ opacity: 0 }} animate={{ opacity: 1 }}). Al terminar la
+   animacion Framer suelta el estilo inline y se ve un frame con el elemento
+   otra vez en opacidad 0 antes del estado en reposo: la vista "pega" un
+   parpadeo al abrirse (medido en /admin/usuarios y /dashboard).
+   Con la entrada en CSS y fill "backwards", el estado en reposo es el del CSS
+   (opacidad 1) y el frame sucio no existe.
+
+   Uso: sumar la clase al elemento y sacar el motion.div
+     <div className="admin-page sys-pagina">
+     <div className="hist-item sys-bloque" style={{ animationDelay: "80ms" }}>
+   ============================================ */
+
+@keyframes sys-pagina-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes sys-bloque-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes sys-tarjeta-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+
+body .sys-pagina {
+  animation: sys-pagina-in 260ms ease-out backwards;
+}
+
+body .sys-bloque {
+  animation: sys-bloque-in 250ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+body .sys-tarjeta {
+  animation: sys-tarjeta-in 250ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .sys-pagina,
+  body .sys-bloque,
+  body .sys-tarjeta {
+    animation: none;
+  }
+}

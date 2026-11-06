@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { X, FileText, Loader2 } from "lucide-react";
+import useCierreAnimado from "../../lib/useCierreAnimado";
+import { bloquearScroll } from "../../lib/lockScroll";
 import "./ConfirmActionModal.css";
 
 export default function ConfirmActionModal({ open, message, onConfirm, onCancel, loading, error }) {
   const [detalles, setDetalles] = useState("");
   const textareaRef = useRef(null);
   const dialogRef = useRef(null);
+  // Cierre animado por CSS (sin el salto de opacidad de Framer al desmontar).
+  const { montado, cerrando } = useCierreAnimado(open);
 
   useEffect(() => {
     if (open) {
@@ -23,11 +26,9 @@ export default function ConfirmActionModal({ open, message, onConfirm, onCancel,
   }, [open, loading, onCancel]);
 
   useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
-  }, [open]);
+    if (!montado) return;
+    return bloquearScroll();
+  }, [montado]);
 
   // El detalle es opcional: Guardar lo envía (o "sin motivo", si está vacío)
   // y Omitir lo saltea directo con "sin motivo". Cancelar/X/Escape no guardan
@@ -35,22 +36,14 @@ export default function ConfirmActionModal({ open, message, onConfirm, onCancel,
   const texto = detalles.trim() || 'sin motivo';
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          key="confirm-backdrop"
-          initial={false}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15, ease: "easeOut" }}
-          className="confirm-backdrop"
-        >
-          <motion.div
-            key="confirm-modal"
+    <>
+      {montado && (
+        <div className={`confirm-backdrop sys-capa${cerrando ? " sys-cerrando" : ""}`}>
+          <div
             ref={dialogRef}
-            initial={false}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="confirm-modal"
+            className={`confirm-modal sys-dialogo${cerrando ? " sys-cerrando" : ""}`}
+            role="dialog"
+            aria-modal="true"
           >
             <div className="confirm-header">
               <div className="confirm-header-left">
@@ -122,9 +115,9 @@ export default function ConfirmActionModal({ open, message, onConfirm, onCancel,
                 </button>
               </div>
             </div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 }

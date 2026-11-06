@@ -2,7 +2,9 @@
 // FILE: src/components/AccountModal.jsx
 // ===============================
 import React, { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
+import useCierreAnimado from "../../lib/useCierreAnimado";
+import { bloquearScroll } from "../../lib/lockScroll";
 
 // Componente: AccountModal
 // Proposito: Modal de informacion de la cuenta del usuario. Muestra datos personales,
@@ -12,14 +14,16 @@ import { AnimatePresence, motion } from "framer-motion";
 //   open    - Booleano que controla la visibilidad del modal.
 //   onClose - Funcion para cerrar el modal.
 import {
-  X, Mail, Shield, Copy, LogOut, CheckCircle2, Clock, CalendarDays, AtSign, GraduationCap, Loader2, Monitor, LogOut as SalirEquipo
+  X, Mail, Shield, Copy, LogOut, CheckCircle2, Clock, CalendarDays, AtSign, GraduationCap, Loader2, Monitor, Camera, Image as ImageIcon, LogOut as SalirEquipo, KeyRound
 } from "lucide-react";
 import useAviso from "./useAviso";
+import CambioClaveForm from "../Common/CambioClaveForm";
 import { useAuth } from "../../../modulos/auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { apiAmbito, apiSesiones, apiCerrarSesiones } from "../../api/auth";
 import { getCached, setCache } from "../../lib/pageCache";
 import { cursoLabel } from "../../lib/cursos";
+import Avatar from "../Common/Avatar";
 import "./AccountModal.css";
 
 /* ---------- Helpers fecha ---------- */
@@ -50,7 +54,7 @@ const roleLabel = (r) =>
   r === "profesor" ? "Profesor/a" : (r || "—");
 
 const AccountModal = ({ open, onClose }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, subirAvatar, quitarAvatar } = useAuth();
   const dialogRef = useRef(null);
   const navigate = useNavigate();
 
@@ -73,6 +77,10 @@ const AccountModal = ({ open, onClose }) => {
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [saliendo, setSaliendo] = useState(false);
   const [mostrarAviso, , avisoModal, mostrarToast] = useAviso();
+  // Cierre animado por CSS: el diálogo queda montado mientras termina la salida,
+  // sin el frame opaco que Framer dejaba justo antes de desmontar.
+  const { montado, cerrando } = useCierreAnimado(open);
+  const { montado: montadoConfirm, cerrando: cerrandoConfirm } = useCierreAnimado(confirmLogout);
 
   // Cursos asignados al usuario (desde /me/ambito). Se muestra en el modal:
   // asignaciones null = sin restriccion (todos los cursos), lista vacia = sin cursos.
@@ -106,6 +114,47 @@ const AccountModal = ({ open, onClose }) => {
     }
   };
 
+  /* ---------- Foto de perfil ---------- */
+  // La sube el usuario mismo; el backend la recorta y la achica. La version
+  // nueva llega en la respuesta y AuthContext la guarda en `user`.
+  const inputFoto = useRef(null);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const [errorFoto, setErrorFoto] = useState("");
+  const [claveAbierta, setClaveAbierta] = useState(false);
+
+  const cambiarFoto = async (archivo) => {
+    if (!archivo) return;
+    setSubiendoFoto(true);
+    setErrorFoto("");
+    try {
+      await subirAvatar(archivo);
+      mostrarToast({ icon: "success", title: "Foto actualizada" });
+    } catch (e) {
+      setErrorFoto(e?.message || "No se pudo subir la foto.");
+    } finally {
+      setSubiendoFoto(false);
+    }
+  };
+
+  const elegirFoto = (e) => {
+    const archivo = e.target.files?.[0];
+    e.target.value = ""; // para poder elegir el mismo archivo otra vez
+    cambiarFoto(archivo);
+  };
+
+  const quitarFoto = async () => {
+    setSubiendoFoto(true);
+    setErrorFoto("");
+    try {
+      await quitarAvatar();
+      mostrarToast({ icon: "success", title: "Se quitó tu foto" });
+    } catch (e) {
+      setErrorFoto(e?.message || "No se pudo quitar la foto.");
+    } finally {
+      setSubiendoFoto(false);
+    }
+  };
+
   /* Cierra el modal con la tecla Escape (confirma logout primero) */
   useEffect(() => {
     if (!open) return;
@@ -118,11 +167,13 @@ const AccountModal = ({ open, onClose }) => {
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose, confirmLogout, saliendo]);
 
-  /* Bloquea el scroll del body mientras el modal esta abierto */
+  /* Bloquea el scroll del body mientras el modal esta montado (incluida la
+     animación de salida): liberarlo antes hacía volver la barra de scroll con
+     el diálogo todavía a media opacidad y la pantalla saltaba de lado. */
   useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "auto";
-    return () => { document.body.style.overflow = "auto"; };
-  }, [open]);
+    if (!montado) return;
+    return bloquearScroll();
+  }, [montado]);
 
   const initials = nombre.split(" ").filter(Boolean).map(p=>p[0]).join("").toUpperCase().slice(0,2);
 
@@ -197,29 +248,13 @@ const AccountModal = ({ open, onClose }) => {
 
   return (
     <>
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          key="account-backdrop"
-          initial={false}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18, ease: "easeOut" }}
-          className="acc-backdrop"
-        >
-          <motion.div
-            key="account-modal"
+    {montado && (
+        <div className={`acc-backdrop sys-capa${cerrando ? " sys-cerrando" : ""}`}>
+          <div
             ref={dialogRef}
-            initial={false}
-            exit={{ 
-              opacity: 0, 
-              scale: 0.96,
-              y: 12
-            }}
-            transition={{ 
-              duration: 0.24, 
-              ease: [0.25, 0.46, 0.45, 0.94], // Custom ease-out
-            }}
-            className="acc-dialog"
+            className={`acc-dialog sys-dialogo${cerrando ? " sys-cerrando" : ""}`}
+            role="dialog"
+            aria-modal="true"
           >
             {/* Top Accent */}
             <div className="acc-top-accent" />
@@ -232,9 +267,33 @@ const AccountModal = ({ open, onClose }) => {
 
               <div className="acc-hero-bar">
                 <div className="acc-hero-left">
-                  <div className="acc-avatar">
-                    {initials}
-                  </div>
+                  {/* La foto se cambia desde acá o desde la tarjeta de abajo. */}
+                  <button
+                    type="button"
+                    className="acc-avatar-btn"
+                    onClick={() => inputFoto.current?.click()}
+                    disabled={subiendoFoto}
+                    title="Cambiar tu foto de perfil"
+                  >
+                    <Avatar
+                      id={user?.id}
+                      version={user?.avatar_version}
+                      titulo={nombre}
+                      className="acc-avatar"
+                    >
+                      {initials}
+                    </Avatar>
+                    <span className="acc-avatar-cam">
+                      {subiendoFoto ? <Loader2 size={12} className="acc-spin" /> : <Camera size={12} />}
+                    </span>
+                  </button>
+                  <input
+                    ref={inputFoto}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="acc-file"
+                    onChange={elegirFoto}
+                  />
 
                   <div className="acc-hero-text">
                     <h3 className="acc-hero-name">{nombre}</h3>
@@ -285,6 +344,79 @@ const AccountModal = ({ open, onClose }) => {
                     {copiado ? "Copiado" : "Copiar"}
                   </button>
                 </div>
+              </motion.div>
+
+              {/* Foto de perfil */}
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.14, duration: 0.2 }}
+                className="acc-card"
+              >
+                <div className="acc-card-label-row">
+                  <ImageIcon size={18} className="acc-ic-blue" />
+                  <span className="acc-card-label">Foto de perfil</span>
+                </div>
+                <div className="acc-foto-fila">
+                  <span className="acc-foto-texto">
+                    {user?.avatar_version
+                      ? "Ya tienes foto: es la que ven tus compañeros."
+                      : "Sin foto: se muestran tus iniciales."}
+                  </span>
+                  <span className="acc-foto-acciones">
+                    <button
+                      onClick={() => inputFoto.current?.click()}
+                      disabled={subiendoFoto}
+                      className="acc-foto-btn"
+                    >
+                      {subiendoFoto ? "Subiendo..." : (user?.avatar_version ? "Cambiar foto" : "Subir foto")}
+                    </button>
+                    {!!user?.avatar_version && (
+                      <button
+                        onClick={quitarFoto}
+                        disabled={subiendoFoto}
+                        className="acc-foto-btn acc-foto-btn-quiet"
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </span>
+                </div>
+                {errorFoto && <div className="acc-foto-error">{errorFoto}</div>}
+                <div className="acc-foto-pista">
+                  JPG, PNG o WebP de hasta 4 MB. Se recorta al centro y se achica sola.
+                </div>
+              </motion.div>
+
+              {/* Clave de acceso: se cambia acá, sin depender del correo */}
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15, duration: 0.2 }}
+                className="acc-card"
+              >
+                <div className="acc-card-label-row">
+                  <KeyRound size={18} className="acc-ic-blue" />
+                  <span className="acc-card-label">Clave de acceso</span>
+                </div>
+                <div className="acc-foto-fila">
+                  <span className="acc-foto-texto">
+                    {user?.debe_cambiar_password
+                      ? "Estás con una clave provisoria: poné una propia."
+                      : "Cambiá tu clave cuando quieras, sin pedirle nada a nadie."}
+                  </span>
+                  <button
+                    onClick={() => setClaveAbierta((v) => !v)}
+                    className="acc-foto-btn"
+                  >
+                    {claveAbierta ? "Ocultar" : "Cambiar clave"}
+                  </button>
+                </div>
+                {claveAbierta && (
+                  <div className="acc-clave-form">
+                    <CambioClaveForm compacto onExito={() => setClaveAbierta(false)} />
+                  </div>
+                )}
               </motion.div>
 
               {/* Grid 2x2 simétrico */}
@@ -413,24 +545,15 @@ const AccountModal = ({ open, onClose }) => {
               </div>
             </motion.div>
 
-          </motion.div>
+          </div>
 
           {/* Confirmacion de cierre de sesion */}
-          <AnimatePresence>
-            {confirmLogout && (
-              <motion.div
-                key="acc-logout-backdrop"
-                initial={false}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="acc-backdrop acc-backdrop-confirm"
-              >
-                <motion.div
-                  key="acc-logout-modal"
-                  initial={false}
-                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                  transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
-                  className="acc-confirm"
+          {montadoConfirm && (
+              <div className={`acc-backdrop acc-backdrop-confirm sys-capa${cerrandoConfirm ? " sys-cerrando" : ""}`}>
+                <div
+                  className={`acc-confirm sys-dialogo${cerrandoConfirm ? " sys-cerrando" : ""}`}
+                  role="dialog"
+                  aria-modal="true"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
                   <div className="acc-confirm-icon">
@@ -455,14 +578,12 @@ const AccountModal = ({ open, onClose }) => {
                       {saliendo ? "Cerrando sesión..." : "Sí, cerrar sesión"}
                     </button>
                   </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                </div>
+              </div>
+          )}
 
-        </motion.div>
+        </div>
       )}
-    </AnimatePresence>
     {avisoModal}
     </>
   );

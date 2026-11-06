@@ -5,6 +5,7 @@ import React from "react";
 import FichaLayout, { field, valBig, card, chipBlue, tag } from "../../compartido/componentes/Common/FichaLayout";
 import { cursoLabel } from "../../compartido/lib/cursos";
 import { useAuth } from "../../modulos/auth/AuthContext";
+import { esGestion, ROLE_LABELS } from "../../modulos/auth/roles";
 
 /*
  * Componente: PreceptorFicha
@@ -44,9 +45,9 @@ function asAsignaciones(x) {
 
 export default function PreceptorFicha({ open, onClose, preceptor }) {
   const { user: currentUser } = useAuth();
-  // Ficha completa solo para gestión (admin/directivo/jefe). Rangos bajos
-  // ven únicamente contacto (nombre/email) y cursos asignados.
-  const puedeVerTodo = ["admin", "directivo", "jefe_preceptores"].includes(currentUser?.role);
+  // Ficha completa solo para gestión (admin/directivo/jefe/prosecretaria). Rangos
+  // bajos ven únicamente contacto (nombre/email) y cursos asignados.
+  const puedeVerTodo = esGestion(currentUser?.role);
   const p = preceptor || {};
   const nombre = safe(p.name ?? p.nombre);
   const apellido = safe(p.apellido ?? p.lastname);
@@ -54,7 +55,7 @@ export default function PreceptorFicha({ open, onClose, preceptor }) {
   const dni = onlyDigits(p.dni);
   const status = safe(p.status || "active");
   const estado = STATUS_LABELS[status] || status;
-  const rolLabel = p.rolLabel || (p.role === "jefe_preceptores" ? "Jefe de preceptores" : "Preceptor");
+  const rolLabel = p.rolLabel || ROLE_LABELS[p.role] || "Preceptor";
 
   const asigs = asAsignaciones(p.asignaciones);
   const obs = safe(p.observaciones ?? p.observaciones).trim();

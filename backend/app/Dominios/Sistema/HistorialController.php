@@ -20,6 +20,9 @@ class HistorialController extends Controller
     // Tiempo de vida de la caché de historial (segundos).
     const CACHE_TTL = 300;
 
+    // Nombres de materias resueltos en lote y recordados durante la request.
+    private ?array $materiasPorId = null;
+
     // GET /api/historial
     // Lista las actividades recientes con filtros opcionales por categoria, tipo de
     // operacion (crear/editar/eliminar) y busqueda, con paginacion configurable.
@@ -70,7 +73,7 @@ class HistorialController extends Controller
                 $keys = array_slice($keys, -50);
             }
             Cache::forever('historial_cache_keys', $keys);
-            return response()->json($result);
+            return $this->responder($result);
         }
 
         $query = ActivityLog::recent();
@@ -108,7 +111,31 @@ class HistorialController extends Controller
 
         $result = $this->buildResult($query, $perPage);
 
-        return response()->json($result);
+        return $this->responder($result);
+    }
+
+    // Devuelve la pagina paginada agregando el conteo global por area, que la
+    // pantalla usa en los chips de filtro. Va junto a la paginacion y no dentro:
+    // los contadores tienen que reflejar TODO el historial, no la pagina visible.
+    private function responder($result)
+    {
+        return response()->json(array_merge($result->toArray(), [
+            'conteos' => $this->conteos(),
+        ]));
+    }
+
+    // Cuantas entradas hay por area (el prefijo del action_type, ej: "alumno").
+    // Una sola consulta agrupada y cacheada: recorrer la tabla en cada pedido
+    // sobraria cuando el historial crece.
+    private function conteos(): array
+    {
+        return Cache::remember('historial_conteos', self::CACHE_TTL, function () {
+            return ActivityLog::query()
+                ->selectRaw('SUBSTRING_INDEX(action_type, \'.\', 1) AS area, COUNT(*) AS cantidad')
+                ->groupBy('area')
+                ->pluck('cantidad', 'area')
+                ->all();
+        });
     }
 
     // GET /api/datos/sello
@@ -168,6 +195,7 @@ class HistorialController extends Controller
         $keys = Cache::get('historial_cache_keys', []);
         foreach ($keys as $k) { Cache::forget($k); }
         Cache::forget('historial_cache_keys');
+        Cache::forget('historial_conteos');
     }
 
     // POST /api/historial/refresh
@@ -215,6 +243,8 @@ class HistorialController extends Controller
             'actor'         => $actor,
             'actor_email'   => $log->user_email,
             'actor_role'    => $log->user_role,
+            // El rol interno (ej: "jefe_preceptores") nunca debe mostrarse tal cual.
+            'actor_role_legible' => $this->roleLabel($log->user_role),
             'entidad'       => $entidad,
             'detalles'      => $log->detalles,
             'resumen'       => $this->resumen($log),
@@ -242,51 +272,85 @@ class HistorialController extends Controller
     {
         $partes = explode('.', $actionType);
         $base = $partes[0] ?? 'general';
-        $operacion = $partes[1] ?? 'otro';
+        // La operacion es el ULTIMO tramo: hay tipos de tres niveles
+        // ("profesor.suplencia.store", "asistencia.justificacion.aprobada") y leer el
+        // segundo dejaba esas tarjetas con la etiqueta generica "Operacion".
+        $operacion = end($partes);
 
         $categorias = [
-            'user'        => ['categoria' => 'Usuarios',        'icono' => 'user'],
-            'alumno'      => ['categoria' => 'Alumnos',         'icono' => 'alumno'],
-            'profesor'    => ['categoria' => 'Profesores',      'icono' => 'profesor'],
-            'calificaciones' => ['categoria' => 'Calificaciones', 'icono' => 'nota'],
-            'horario'     => ['categoria' => 'Horarios',        'icono' => 'reloj'],
-            'divisiones'  => ['categoria' => 'Divisiones',      'icono' => 'division'],
-            'documento'   => ['categoria' => 'Documentos',      'icono' => 'doc'],
-            'profesor_baja' => ['categoria' => 'Profesores',    'icono' => 'profesor'],
-            'materias'    => ['categoria' => 'Materias',        'icono' => 'doc'],
-            'curso'       => ['categoria' => 'Cursos',          'icono' => 'division'],
+            'user'           => ['categoria' => 'Usuarios',        'icono' => 'user'],
+            'alumno'         => ['categoria' => 'Alumnos',         'icono' => 'alumno'],
+            'profesor'       => ['categoria' => 'Profesores',      'icono' => 'profesor'],
+            'profesor_baja'  => ['categoria' => 'Profesores',      'icono' => 'profesor'],
+            'calificaciones' => ['categoria' => 'Calificaciones',  'icono' => 'nota'],
+            'asistencia'     => ['categoria' => 'Asistencia',      'icono' => 'asistencia'],
+            'horario'        => ['categoria' => 'Horarios',        'icono' => 'reloj'],
+            'divisiones'     => ['categoria' => 'Divisiones',      'icono' => 'division'],
+            'curso'          => ['categoria' => 'Cursos',          'icono' => 'division'],
+            'cursos'         => ['categoria' => 'Cursos',          'icono' => 'division'],
+            'materias'       => ['categoria' => 'Materias',        'icono' => 'materia'],
+            'documento'      => ['categoria' => 'Documentos',      'icono' => 'doc'],
+            'promocion'      => ['categoria' => 'Promociones',     'icono' => 'promocion'],
+            'ventana'        => ['categoria' => 'Ventana de notas', 'icono' => 'ventana'],
+            'backup'         => ['categoria' => 'Copias de seguridad', 'icono' => 'backup'],
+            'rol'            => ['categoria' => 'Roles',           'icono' => 'user'],
         ];
 
         $cat = $categorias[$base] ?? ['categoria' => 'Sistema', 'icono' => 'engranaje'];
 
-        $colores = [
-            'store'  => 'green',
-            'create' => 'green',
-            'update' => 'blue',
-            'edit'   => 'blue',
-            'destroy' => 'red',
-            'login'    => 'indigo',
-            'download' => 'violet',
-            'restore' => 'amber',
+        // Etiqueta y color por accion. Si aparece un action_type nuevo que no esta
+        // aqui, se humaniza el tramo en lugar de mostrar "Operacion" a secas.
+        $operaciones = [
+            'store'            => ['Creación', 'green'],
+            'create'           => ['Creación', 'green'],
+            'register'         => ['Registro público', 'green'],
+            'storeFromUsers'   => ['Creación desde usuarios', 'green'],
+            'up'               => ['Promoción', 'green'],
+            'aprobada'         => ['Justificación aprobada', 'green'],
+            'update'           => ['Edición', 'blue'],
+            'edit'             => ['Edición', 'blue'],
+            'replace'          => ['Reemplazo', 'blue'],
+            'sync'             => ['Sincronización', 'blue'],
+            'assignments'      => ['Asignaciones', 'blue'],
+            'avatar'           => ['Foto de perfil', 'blue'],
+            'clave_temporal'   => ['Clave temporal', 'amber'],
+            'horario'          => ['Horario', 'blue'],
+            'todas'            => ['Carga de materias', 'blue'],
+            'oficiales'        => ['Materias oficiales', 'blue'],
+            'destroy'          => ['Eliminación', 'red'],
+            'delete'           => ['Eliminación', 'red'],
+            'rechazar'         => ['Rechazo', 'red'],
+            'rechazada'        => ['Rechazo', 'red'],
+            'error'            => ['Error', 'red'],
+            'email_error'      => ['Error de envío', 'red'],
+            'login'            => ['Inicio de sesión', 'indigo'],
+            'logout'           => ['Cierre de sesión', 'indigo'],
+            'download'         => ['Descarga', 'violet'],
+            'print'            => ['Impresión', 'violet'],
+            'download_sql'     => ['Descarga de copia', 'violet'],
+            'email_sql'        => ['Copia enviada por mail', 'violet'],
+            'email_json'       => ['Informe enviado por mail', 'violet'],
+            'restore'          => ['Restauración', 'amber'],
+            'import'           => ['Importación', 'amber'],
+            'import_sql'       => ['Importación de copia', 'amber'],
+            'verify'           => ['Verificación', 'amber'],
+            'role'             => ['Cambio de rol', 'amber'],
+            'egresar'          => ['Egreso', 'amber'],
+            'justificar'       => ['Justificación', 'amber'],
+            'pendiente'        => ['Justificación pendiente', 'amber'],
+            'cerrar'           => ['Cierre', 'amber'],
+            'down'             => ['Reversión', 'amber'],
         ];
 
-        $operacionLabel = [
-            'store'   => 'Creación',
-            'create'  => 'Creación',
-            'update'  => 'Edición',
-            'edit'    => 'Edición',
-            'destroy' => 'Eliminación',
-            'login'    => 'Inicio de sesión',
-            'download' => 'Descarga',
-            'restore' => 'Restauración',
-        ];
+        [$etiqueta, $color] = $operaciones[$operacion]
+            ?? [ucfirst(str_replace('_', ' ', $operacion)), 'slate'];
 
         return [
             'icono'         => $cat['icono'],
-            'color'         => $colores[$operacion] ?? 'slate',
+            'color'         => $color,
             'categoria'     => $cat['categoria'],
             'categoria_key' => $base,
-            'operacion'     => $operacionLabel[$operacion] ?? 'Operación',
+            'operacion'     => $etiqueta,
         ];
     }
 
@@ -500,6 +564,18 @@ class HistorialController extends Controller
      * Convierte una lista de {anio, division, materia_id, materia_nombre} en un
      * texto legible, p. ej. "3.º 5 · Matemática; 4.º 5 · Lengua".
      */
+    /**
+     * Ids y nombres de todas las materias en un solo mapa.
+     *
+     * El curriculo es acotado (pocas centenas de materias) y se resuelve una unica
+     * vez por request: antes cada tarjeta hacia un find() por materia y armar una
+     * pagina de 200 registros disparaba cientos de consultas.
+     */
+    private function nombresMaterias(): array
+    {
+        return $this->materiasPorId ??= Materia::query()->pluck('nombre', 'id')->all();
+    }
+
     private function relacionLista($v): string
     {
         $items = is_array($v) ? $v : [];
@@ -510,8 +586,7 @@ class HistorialController extends Controller
             $mid = $it['materia_id'] ?? null;
             $nombre = trim((string)($it['materia_nombre'] ?? $it['materia'] ?? ''));
             if ($nombre === '' && $mid) {
-                $materia = Materia::query()->find((int) $mid);
-                if ($materia) $nombre = trim((string) $materia->nombre);
+                $nombre = trim((string) ($this->nombresMaterias()[(int) $mid] ?? ''));
             }
             if ($nombre === '') $nombre = $mid ? 'Materia #' . $mid : 'Materia';
             $curso = \App\Support\CourseLabel::label($it['anio'] ?? null, $it['division'] ?? null);

@@ -20,6 +20,7 @@ import { apiGet, apiPut } from "../../compartido/lib/api";
 import { cargarDivisiones } from "../../compartido/lib/divisiones";
 import Breadcrumbs from "../../compartido/componentes/Common/Breadcrumbs";
 import { cursoLabel } from "../../compartido/lib/cursos";
+import { esGestion } from "../auth/roles";
 import useAviso from "../../compartido/componentes/modals/useAviso";
 import useConfirmAction from "../../compartido/hooks/useConfirmAction";
 import usePasswordPrompt from "../../compartido/componentes/modals/usePasswordPrompt";
@@ -148,7 +149,7 @@ const Cursos = () => {
   // Determina si el usuario puede editar un curso específico
   const puedeEditarCurso = (anio, division) => {
     if (!user) return false;
-    if (['admin', 'directivo', 'jefe_preceptores'].includes(user.role)) return true;
+    if (esGestion(user.role)) return true;
     if (user.role === 'preceptor' && ambito?.asignaciones?.length) {
       return ambito.asignaciones.some(a => a.anio === anio && (a.division || '').toUpperCase() === (division || '').toUpperCase());
     }

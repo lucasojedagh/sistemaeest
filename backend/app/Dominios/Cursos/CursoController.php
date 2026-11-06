@@ -31,6 +31,9 @@ class CursoController extends Controller
             $q->where('activo', filter_var($request->activo, FILTER_VALIDATE_BOOLEAN));
         }
 
+        // El listado se recorta según el alcance de lectura de cursos del rol.
+        $this->scopeCursoIndex($request, $q);
+
         return response()->json(
             $q->paginate(\App\Support\Paginacion::porPagina($request, 200, 500), ['id','anio','division','turno','cupo','activo'])
         );
@@ -117,7 +120,8 @@ class CursoController extends Controller
     }
 
     // Elimina un curso del sistema.
-    // No se puede eliminar la última división activa de los años 1 a 7.
+    // Solo si no dejó rastro: tiene datos de alumnos se conserva desactivando la
+    // división, no borrando el curso.
     // DELETE /api/cursos/{id}
     public function destroy(Request $request, Curso $curso): JsonResponse
     {
@@ -134,6 +138,33 @@ class CursoController extends Controller
                     422
                 );
             }
+        }
+
+        // Borrar el curso se lleva por cascada su horario, las clases y la
+        // asistencia de todos sus alumnos. Si hay algo de eso, la alternativa es
+        // desactivar la división: desaparece de las listas y el histórico queda.
+        $nAlumnos = \App\Dominios\Alumnos\Alumno::where('anio', $curso->anio)
+            ->where('division', $curso->division)
+            ->count();
+        $nClases = \Illuminate\Support\Facades\DB::table('clases')->where('curso_id', $curso->id)->count();
+        $nAsistencias = \Illuminate\Support\Facades\DB::table('asistencias')
+            ->join('clases', 'clases.id', '=', 'asistencias.clase_id')
+            ->where('clases.curso_id', $curso->id)
+            ->count();
+        $nCeldas = \Illuminate\Support\Facades\DB::table('horario_celdas')->where('curso_id', $curso->id)->count();
+
+        if ($nAlumnos > 0 || $nClases > 0 || $nAsistencias > 0 || $nCeldas > 0) {
+            $pedazos = [];
+            if ($nAlumnos > 0)     $pedazos[] = $nAlumnos . ($nAlumnos === 1 ? ' alumno' : ' alumnos');
+            if ($nClases > 0)      $pedazos[] = $nClases . ($nClases === 1 ? ' clase' : ' clases');
+            if ($nAsistencias > 0) $pedazos[] = $nAsistencias . ($nAsistencias === 1 ? ' registro de asistencia' : ' registros de asistencia');
+            if ($nCeldas > 0)      $pedazos[] = $nCeldas . ($nCeldas === 1 ? ' hora de horario' : ' horas de horario');
+
+            return response()->json([
+                'message' => 'No se puede eliminar el curso ' . \App\Support\CourseLabel::label($curso->anio, $curso->division)
+                    . ': tiene ' . implode(', ', $pedazos) . ' y el sistema no borra esos datos.'
+                    . ' Desactivá la división en "Editar divisiones": el curso deja de aparecer y todo se conserva.',
+            ], 422);
         }
 
         $curso->delete();

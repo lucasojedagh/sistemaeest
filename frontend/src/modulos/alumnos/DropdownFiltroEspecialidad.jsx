@@ -2,7 +2,8 @@
 // FILE: src/components/Alumnos/DropdownFiltroEspecialidad.jsx
 // ===============================
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
 import { ESPECIALIDADES } from '../../compartido/lib/cursos';
 import "./DropdownFiltroEspecialidad.css";
 
@@ -17,6 +18,7 @@ import "./DropdownFiltroEspecialidad.css";
 
 const DropdownFiltroEspecialidad = ({ value, onChange, className = '' }) => {
   const [open, setOpen] = useState(false);
+  const { montado, cerrando } = useCierreAnimado(open, 150);
   const ref = useRef();
 
   useEffect(() => {
@@ -61,14 +63,9 @@ const DropdownFiltroEspecialidad = ({ value, onChange, className = '' }) => {
         </motion.span>
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ y: -10 }}
-            animate={{ y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="dropdown-esp-panel"
+      {montado && (
+          <div
+            className={`dropdown-esp-panel sys-desplegable${cerrando ? " sys-cerrando" : ""}`}
           >
             <div>
               <div
@@ -88,9 +85,9 @@ const DropdownFiltroEspecialidad = ({ value, onChange, className = '' }) => {
                 </div>
               ))}
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      
     </div>
   );
 };

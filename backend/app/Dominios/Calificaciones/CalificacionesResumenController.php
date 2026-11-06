@@ -4,6 +4,7 @@ namespace App\Dominios\Calificaciones;
 
 use App\Http\Controllers\Controller;
 
+use App\Support\Alcances;
 use App\Support\AuthorizesScope;
 use App\Support\RoleHierarchy;
 use Illuminate\Http\Request;
@@ -45,8 +46,9 @@ class CalificacionesResumenController extends Controller
     // Detecta automaticamente la tabla y columnas disponibles en el esquema actual.
     public function index(Request $request)
     {
-        // Endpoint agregado con promedios de todos los alumnos: solo roles docentes/staff.
-        if (!RoleHierarchy::isAtLeast($request->user()->role, RoleHierarchy::PROFESOR)) {
+        // Endpoint agregado con promedios de todos los alumnos: el alcance de
+        // lectura de calificaciones del rol decide.
+        if (!$this->puedeVer($request, 'calificaciones')) {
             abort(403, 'No tenés permiso para ver resumenes de calificaciones.');
         }
 
@@ -89,9 +91,9 @@ class CalificacionesResumenController extends Controller
             $q->where($colCiclo, $ciclo);
         }
 
-        // Restringe el alcance para profesor/preceptor: solo sus cursos asignados.
-        // Usa assignedPairs (une asignaciones de usuario y ficha profesional por email).
-        if (!$this->userCanWriteAll($request)) {
+        // Restringe el alcance según el alcance de lectura de calificaciones del
+        // rol: usa assignedPairs (une asignaciones de usuario y ficha profesional por email).
+        if ($this->alcanceVer($request, 'calificaciones') !== Alcances::TODO) {
             $assigns = collect($this->assignedPairs($request))
                 ->filter(fn ($p) => !empty($p['anio']))
                 ->map(fn ($p) => [(int) $p['anio'], $p['division'] ?? null])

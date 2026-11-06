@@ -6,11 +6,12 @@ import React, {
 } from 'react';
 import { apiGet } from "../../compartido/lib/api";
 import { cargarDivisiones } from "../../compartido/lib/divisiones";
-import { motion, AnimatePresence } from 'framer-motion';
+import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
 import { X, Trash2, Plus } from 'lucide-react';
 import CursoDropdown from './CursoDropdown';
 import useAviso from "../../compartido/componentes/modals/useAviso";
 import { cursoLabel, parseCurso, ESPECIALIDADES, ANIO_ESPECIALIDAD_DESDE } from '../../compartido/lib/cursos';
+import { bloquearScroll } from "../../compartido/lib/lockScroll";
 import "./AlumnoModal.css";
 
 /*
@@ -254,6 +255,11 @@ export default function AlumnoModal({ visible, onClose, alumno, setAlumno, agreg
   const [respConvive, setRespConvive] = useState(false);
 
   const nombreRef = useRef();
+  const { montado, cerrando } = useCierreAnimado(visible);
+  useEffect(() => {
+    if (!montado) return;
+    return bloquearScroll();
+  }, [montado]);
   useEffect(() => { if (visible) setTimeout(() => nombreRef.current?.focus(), 50); }, [visible]);
 
   /* ===== Asistente por pasos: 1 Quién es · 2 Curso · 3 Familia y contacto ===== */
@@ -607,6 +613,7 @@ export default function AlumnoModal({ visible, onClose, alumno, setAlumno, agreg
       dni: dniDigits || null,
       nacionalidad: (alumno?.nacionalidad || '').trim() || null,
       matricula: (alumno?.matricula || '').trim() || null,
+      email: (alumno?.email || '').replace(/\s+/g, '') || null,
       fecha_nacimiento: alumno?.fechaNacimiento || alumno?.fecha_nacimiento || null,
       anio: anioNum,
       division: divisionFinal,
@@ -716,6 +723,7 @@ export default function AlumnoModal({ visible, onClose, alumno, setAlumno, agreg
     dni: String(a?.dni || '').replace(/\D/g, ''),
     nacionalidad: (a?.nacionalidad || '').trim(),
     matricula: (a?.matricula || '').trim(),
+    email: (a?.email || '').replace(/\s+/g, '').toLowerCase(),
     fecha: a?.fechaNacimiento || a?.fecha_nacimiento || '',
     anio: a?.anio || '',
     division: cleanDivision(a?.division) || '',
@@ -794,19 +802,10 @@ export default function AlumnoModal({ visible, onClose, alumno, setAlumno, agreg
 
   return (
     <>
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          key="alumno-modal-backdrop"
-          initial={false} exit={{ opacity: 0 }}
-          transition={{ duration: 0.18, ease: "easeOut" }}
-className="alumno-modal-backdrop"
-        >
-          <motion.div
-            initial={false}
-            exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            transition={{ duration: 0.24, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="alumno-modal-container"
+      {montado && (
+        <div className={`alumno-modal-backdrop sys-capa${cerrando ? " sys-cerrando" : ""}`}>
+          <div
+            className={`alumno-modal-container sys-dialogo${cerrando ? " sys-cerrando" : ""}`}
             role="dialog" aria-modal="true"
           >
             {/* Top Accent */}
@@ -905,6 +904,15 @@ className="alumno-modal-backdrop"
                   aria-label="Nro. de matrícula"
                   value={alumno.matricula || ''}
                   onChange={(e) => setAlumno({ ...alumno, matricula: e.target.value })}
+                  className="alumno-modal-input alumno-modal-input-ok"
+                />
+                <input
+                  type="email"
+                  maxLength={120}
+                  placeholder="Correo electrónico (alumno@correo.com)"
+                  aria-label="Correo electrónico"
+                  value={alumno.email || ''}
+                  onChange={(e) => setAlumno({ ...alumno, email: e.target.value })}
                   className="alumno-modal-input alumno-modal-input-ok"
                 />
                 </div>
@@ -1242,10 +1250,9 @@ className="alumno-modal-backdrop"
                 </button>
               )}
             </div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
-    </AnimatePresence>
     {avisoModal}
     </>
   );

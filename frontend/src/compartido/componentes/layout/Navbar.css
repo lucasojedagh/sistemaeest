@@ -260,6 +260,22 @@
   text-decoration: underline;
 }
 
+/* Enlaces del pie en una fila: Manuales + Acerca de */
+.sidebar-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  margin-top: var(--sp-2);
+}
+
+.sidebar-footer-links .sidebar-footer-about {
+  margin-top: 0;
+  margin-left: 0;
+  margin-right: 0;
+}
+
 /* ---------- Celular: drawer deslizable ---------- */
 @media (max-width: 900px) {
   .sidebar {

@@ -299,12 +299,31 @@ class MateriaController extends Controller
      * DELETE /materias/{materia}
      */
     // Elimina fisicamente una materia y registra la accion en el historial.
+    // Se niega si la materia todavía sostiene datos de alumnos.
     public function destroy(Request $request, Materia $materia)
     {
         $this->assertPasswordConfirmed($request);
         $this->assertCanWriteDivision($request, $materia->anio, null);
 
-        // El motivo es opcional: si viene vacío, el historial guarda "sin motivo".
+        // El borrado deja las notas sin materia (FK en SET NULL) y elimina
+        // promedios y estados por cascada. La forma de jubilar una materia es
+        // sacarla del listado del año: se desactiva y su historial sigue intacto.
+        $nNotas = DB::table('alumno_calificaciones')->where('materia_id', $materia->id)->count();
+        $nOtros = DB::table('alumno_promedios')->where('materia_id', $materia->id)->count()
+                + DB::table('alumno_materias_estado')->where('materia_id', $materia->id)->count();
+
+        if ($nNotas > 0 || $nOtros > 0) {
+            $pedazos = [];
+            if ($nNotas > 0) $pedazos[] = $nNotas . ($nNotas === 1 ? ' nota' : ' notas');
+            if ($nOtros > 0) $pedazos[] = $nOtros . ($nOtros === 1 ? ' promedio o estado' : ' promedios o estados');
+
+            return response()->json([
+                'message' => 'No se puede eliminar "' . $materia->nombre . '" de ' . \App\Support\CourseLabel::anio($materia->anio)
+                    . ': tiene ' . implode(' y ', $pedazos) . ' de alumnos cargados y el sistema no borra esos datos.'
+                    . ' Quitá la materia del listado del año para que deje de usarse, así el histórico queda guardado.',
+            ], 422);
+        }
+
         $request->validate([
             '_detalles' => 'nullable|string|max:1000',
         ]);

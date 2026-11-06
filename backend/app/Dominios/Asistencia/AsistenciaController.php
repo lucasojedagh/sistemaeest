@@ -11,9 +11,11 @@ use App\Dominios\Asistencia\Clase;
 use App\Dominios\Cursos\Curso;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Support\ActivityLogger;
+use App\Support\Alcances;
 use App\Support\AsistenciaReglas;
 use App\Support\AuthorizesScope;
 use App\Support\CourseLabel;
+use App\Support\Permisos;
 use App\Support\RoleHierarchy;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -28,27 +30,27 @@ class AsistenciaController extends Controller
     private static array $CLASE_ESTADOS = AsistenciaReglas::CLASE_ESTADOS;
     private static array $J_ESTADOS = AsistenciaReglas::J_ESTADOS;
 
+    /**
+     * Ids de curso visibles para el usuario según el alcance de lectura de
+     * asistencia. null = todos los cursos; lista vacía = no ve ninguno.
+     */
     private function scopeCursoIds(Request $req): ?array
     {
-        if ($this->userCanWriteAll($req)) {
+        $alcance = $this->alcanceVer($req, 'asistencia');
+        if ($alcance === Alcances::TODO) {
             return null;
         }
-        if (!RoleHierarchy::isAtLeast($req->user()->role, RoleHierarchy::PROFESOR)) {
+        if ($alcance === Alcances::NADA) {
             abort(403, 'No tenés permiso para consultar asistencias.');
         }
 
-        $assigns = $req->user()->anioDivisiones()
-            ->whereNotNull('anio')
-            ->get(['anio', 'division']);
-
-        if ($assigns->isEmpty()) {
-            return [];
-        }
-
         $ids = [];
-        foreach ($assigns as $a) {
-            $ids = array_merge($ids, Curso::where('anio', (int) $a->anio)
-                ->when($a->division !== null, fn ($q) => $q->where('division', strtoupper((string) $a->division)))
+        foreach ($this->assignedPairs($req) as $a) {
+            if (empty($a['anio'])) {
+                continue;
+            }
+            $ids = array_merge($ids, Curso::where('anio', (int) $a['anio'])
+                ->when($a['division'] !== null, fn ($q) => $q->where('division', $a['division']))
                 ->pluck('id')
                 ->all());
         }
@@ -57,9 +59,12 @@ class AsistenciaController extends Controller
 
     private function assertCanOperar(Request $req, int $anio, ?string $division): void
     {
-        if (!$this->userCanWriteAll($req) && !$this->userIsAssignedTo($req, $anio, $division)) {
-            abort(403, 'No tenés permiso para operar sobre este curso.');
-        }
+        $this->assertPuedeEditarCurso($req, $anio, $division, 'asistencia');
+    }
+
+    private function assertCanVerCurso(Request $req, int $anio, ?string $division): void
+    {
+        $this->assertPuedeVerCurso($req, $anio, $division, 'asistencia');
     }
 
     private function resolverCurso(int $anio, string $division): Curso
@@ -102,12 +107,12 @@ class AsistenciaController extends Controller
 
     public function cursos(Request $req): JsonResponse
     {
-        if (!RoleHierarchy::isAtLeast($req->user()->role, RoleHierarchy::PROFESOR)) {
+        if (!$this->puedeVer($req, 'asistencia')) {
             abort(403, 'No tenés permiso para consultar asistencias.');
         }
 
         $map = [];
-        if ($this->userCanWriteAll($req)) {
+        if ($this->veTodo($req, 'asistencia')) {
             $divs = \App\Dominios\Cursos\ParametroDivision::where('activo', true)
                 ->orderBy('anio')->orderBy('division')
                 ->get(['anio', 'division']);
@@ -118,9 +123,11 @@ class AsistenciaController extends Controller
                 $map[(int) $d->anio][] = strtoupper(trim((string) $d->division));
             }
         } else {
-            $assigns = $req->user()->anioDivisiones()->whereNotNull('anio')->get(['anio', 'division']);
-            foreach ($assigns as $a) {
-                $map[(int) $a->anio][] = $a->division !== null ? strtoupper(trim((string) $a->division)) : '*';
+            foreach ($this->assignedPairs($req) as $a) {
+                if (empty($a['anio'])) {
+                    continue;
+                }
+                $map[(int) $a['anio']][] = $a['division'] ?? '*';
             }
         }
 
@@ -130,12 +137,26 @@ class AsistenciaController extends Controller
         }
         ksort($normalized, SORT_NUMERIC);
 
+        // Qué cursos puede efectivamente marcar esta cuenta. El preceptor ve la
+        // asistencia de todo el colegio pero escribe sólo en sus cursos: sin esta
+        // lista el selector ofrece cursos que después devuelven 403 al guardar,
+        // y el aviso recién aparece después de marcar los 30 alumnos.
+        // null = puede en todos (no se agrega la clave).
+        if ($this->alcanceEditar($req, 'asistencia') === Alcances::ASIGNADO) {
+            $editables = [];
+            foreach ($this->assignedPairs($req) as $a) {
+                if (empty($a['anio'])) continue;
+                $editables[] = [(int) $a['anio'], $a['division']];
+            }
+            $normalized['editables'] = $editables;
+        }
+
         return response()->json($normalized);
     }
 
     public function index(Request $req): JsonResponse
     {
-        if (!RoleHierarchy::isAtLeast($req->user()->role, RoleHierarchy::PROFESOR)) {
+        if (!$this->puedeVer($req, 'asistencia')) {
             abort(403, 'No tenés permiso para consultar asistencias.');
         }
 
@@ -143,7 +164,7 @@ class AsistenciaController extends Controller
         $division = $anio ? strtoupper(trim((string) $req->query('division', ''))) : null;
 
         if ($anio) {
-            $this->assertCanOperar($req, $anio, $division);
+            $this->assertCanVerCurso($req, $anio, $division);
         }
 
         $q = Clase::query()
@@ -321,7 +342,7 @@ class AsistenciaController extends Controller
     private function claseDetalle(Request $req, int $claseId): array
     {
         $clase = Clase::with(['curso:id,anio,division,activo', 'responsable:id,name,apellido'])
-            ->with(['asistencias.alumno:id,nombre,apellido', 'asistencias.justificacion:id,asistencia_id,estado,motivo'])
+            ->with(['asistencias.alumno:id,nombre,apellido,anio,division', 'asistencias.justificacion:id,asistencia_id,estado,motivo'])
             ->findOrFail($claseId);
 
         $alumnosCurso = Alumno::where('anio', $clase->curso->anio)
@@ -346,6 +367,24 @@ class AsistenciaController extends Controller
             ];
         });
 
+        // Marcas de alumnos que hoy no están en el curso de la clase (promovidos
+        // o cambiados de división). La planilla se arma con los alumnos actuales,
+        // así que sin este aviso la clase parece vacía aunque el listado cuente marcas.
+        $marcasFuera = $clase->asistencias
+            ->filter(function ($a) use ($clase) {
+                $al = $a->alumno;
+                if (!$al) return true;
+                return (int) $al->anio !== (int) $clase->curso->anio
+                    || strtoupper(trim((string) $al->division)) !== strtoupper(trim((string) $clase->curso->division));
+            })
+            ->map(fn ($a) => [
+                'alumno_id'    => (int) $a->alumno_id,
+                'nombre'       => trim(($a->alumno->apellido ?? '') . ', ' . ($a->alumno->nombre ?? '')),
+                'estado'       => $a->estado,
+                'curso_actual' => $a->alumno ? CourseLabel::label($a->alumno->anio, $a->alumno->division) : 'ya no está en el padrón',
+            ])
+            ->values();
+
         return [
             'clase' => [
                 'id'           => $clase->id,
@@ -366,13 +405,16 @@ class AsistenciaController extends Controller
                 ] : null,
             ],
             'alumnos' => $alumnos,
+            'marcas_fuera' => $marcasFuera,
         ];
     }
 
     public function show(Request $req, int $claseId): JsonResponse
     {
         $clase = Clase::with('curso:id,anio,division,activo')->findOrFail($claseId);
-        $this->assertCanOperar($req, $clase->curso->anio, $clase->curso->division);
+        // Ver el detalle de una clase es lectura: el preceptor ve todas aunque
+        // sólo pueda marcar las de sus cursos asignados.
+        $this->assertCanVerCurso($req, $clase->curso->anio, $clase->curso->division);
 
         return response()->json($this->claseDetalle($req, $claseId));
     }
@@ -464,13 +506,13 @@ class AsistenciaController extends Controller
             $clase->save();
 
             // Sincroniza manteniendo los IDs existentes para no disparar cascade
-            // en asistencia_justificaciones.
+            // en asistencia_justificaciones. Las filas de alumnos que ya no
+            // pertenecen al curso NO se borran: son el historial del día, y como
+            // el detalle se arma desde la nómina actual no llegan a mostrarse.
             $existentes = Asistencia::where('clase_id', $clase->id)->get()->keyBy('alumno_id');
-            $submittedAlumnoIds = [];
 
             foreach ($submit as $al) {
                 $alumnoId = (int) $al['alumno_id'];
-                $submittedAlumnoIds[] = $alumnoId;
                 $anotacion = isset($al['anotacion']) && trim((string) $al['anotacion']) !== ''
                     ? trim((string) $al['anotacion'])
                     : null;
@@ -488,12 +530,6 @@ class AsistenciaController extends Controller
                         'anotacion'  => $anotacion,
                     ]);
                 }
-            }
-
-            // Si se omitieron alumnos previamente registrados (ej. clase suspendida), se eliminan solo los sobrantes
-            $sobrantes = $existentes->keys()->diff($submittedAlumnoIds);
-            if ($sobrantes->isNotEmpty()) {
-                Asistencia::where('clase_id', $clase->id)->whereIn('alumno_id', $sobrantes)->delete();
             }
         });
 
@@ -520,7 +556,9 @@ class AsistenciaController extends Controller
 
     public function destroy(Request $req, int $claseId): JsonResponse
     {
-        if (!$this->userCanWriteAll($req)) {
+        // Eliminar una clase ya registrada es una acción de supervisión: exige
+        // alcance de escritura total sobre asistencia (configurable por rol).
+        if (!$this->editaTodo($req, 'asistencia')) {
             abort(403, 'Solo la supervisión puede eliminar una clase registrada.');
         }
 
@@ -530,6 +568,22 @@ class AsistenciaController extends Controller
         $clase = Clase::with('curso:id,anio,division')->findOrFail($claseId);
         $label = CourseLabel::label($clase->curso->anio, $clase->curso->division);
         $numero = $clase->numero_clase;
+
+        // Las justificaciones cuelgan de la asistencia y se van con ella por
+        // cascada (documento incluido). Una clase justificada no se borra:
+        // se edita y se marca suspendida.
+        $justificadas = DB::table('asistencia_justificaciones')
+            ->join('asistencias', 'asistencias.id', '=', 'asistencia_justificaciones.asistencia_id')
+            ->where('asistencias.clase_id', $claseId)
+            ->count();
+        if ($justificadas > 0) {
+            return response()->json([
+                'message' => "La clase #{$numero} de {$label} tiene {$justificadas} justificación"
+                    . ($justificadas === 1 ? '' : 'es')
+                    . " cargada. No se elimina para no perder esos papeles: editá la clase y dejala como suspendida.",
+            ], 422);
+        }
+
         $clase->delete();
 
         ActivityLogger::log($req, 'Eliminó la clase #' . $numero . ' de ' . $label, 'asistencia.destroy', 'Clase', $claseId);
@@ -539,7 +593,7 @@ class AsistenciaController extends Controller
 
     public function historial(Request $req): JsonResponse
     {
-        if (!RoleHierarchy::isAtLeast($req->user()->role, RoleHierarchy::PROFESOR)) {
+        if (!$this->puedeVer($req, 'asistencia')) {
             abort(403, 'No tenés permiso para consultar asistencias.');
         }
 
@@ -558,14 +612,14 @@ class AsistenciaController extends Controller
             if (!$alumno) {
                 abort(404, 'No hay ningún alumno con ese DNI.');
             }
-            $this->assertCanOperar($req, (int) $alumno->anio, $alumno->division);
+            $this->assertCanVerCurso($req, (int) $alumno->anio, $alumno->division);
             $scope = ['alumno_id' => $alumno->id];
         } elseif ($alumnoId) {
             $alumno = Alumno::findOrFail($alumnoId);
-            $this->assertCanOperar($req, (int) $alumno->anio, $alumno->division);
+            $this->assertCanVerCurso($req, (int) $alumno->anio, $alumno->division);
             $scope = ['alumno_id' => $alumnoId];
         } elseif ($anio) {
-            $this->assertCanOperar($req, $anio, $division);
+            $this->assertCanVerCurso($req, $anio, $division);
             $scope = ['anio' => $anio, 'division' => $division];
         } else {
             abort(422, 'Falta especificar un alumno o un curso.');
@@ -737,7 +791,7 @@ class AsistenciaController extends Controller
 
     public function inasistencias(Request $req): JsonResponse
     {
-        if (!RoleHierarchy::isAtLeast($req->user()->role, RoleHierarchy::PROFESOR)) {
+        if (!$this->puedeVer($req, 'asistencia')) {
             abort(403, 'No tenés permiso para consultar asistencias.');
         }
 
@@ -746,7 +800,7 @@ class AsistenciaController extends Controller
         $minimo = max(0, (int) $req->query('minimo', 10));
 
         if ($anio) {
-            $this->assertCanOperar($req, $anio, $division);
+            $this->assertCanVerCurso($req, $anio, $division);
         }
 
         // Los conteos se hacen en la base. Antes se traía una fila por cada
@@ -841,7 +895,7 @@ class AsistenciaController extends Controller
 
     public function justificaciones(Request $req): JsonResponse
     {
-        if (!RoleHierarchy::isAtLeast($req->user()->role, RoleHierarchy::PROFESOR)) {
+        if (!$this->puedeVer($req, 'asistencia')) {
             abort(403, 'No tenés permiso para consultar justificaciones.');
         }
 
@@ -850,7 +904,7 @@ class AsistenciaController extends Controller
         $estado = $req->query('estado');
 
         if ($anio) {
-            $this->assertCanOperar($req, $anio, $division);
+            $this->assertCanVerCurso($req, $anio, $division);
         }
 
         $q = AsistenciaJustificacion::query()
@@ -968,9 +1022,12 @@ class AsistenciaController extends Controller
             ->findOrFail($id);
 
         $curso = $just->asistencia->clase->curso;
-        if (!$this->userCanWriteAll($req) && !($req->user()->role === 'preceptor' && $this->userIsAssignedTo($req, (int) $curso->anio, $curso->division))) {
+        // Resolver una justificación pide el permiso específico y, además, que el
+        // curso esté dentro del alcance de escritura del rol.
+        if (!Permisos::puede($this->rolDe($req), 'asistencia.justificar')) {
             abort(403, 'No tenés permiso para resolver esta justificación.');
         }
+        $this->assertPuedeEditarCurso($req, (int) $curso->anio, $curso->division, 'asistencia');
 
         if ($just->estado !== AsistenciaReglas::J_ESTADO_PENDIENTE) {
             abort(422, 'Esta justificación ya fue resuelta.');
@@ -1001,7 +1058,7 @@ class AsistenciaController extends Controller
 
     public function estadisticas(Request $req): JsonResponse
     {
-        if (!RoleHierarchy::isAtLeast($req->user()->role, RoleHierarchy::PROFESOR)) {
+        if (!$this->puedeVer($req, 'asistencia')) {
             abort(403, 'No tenés permiso para consultar estadísticas.');
         }
 
@@ -1009,7 +1066,7 @@ class AsistenciaController extends Controller
         $division = $anio ? strtoupper(trim((string) $req->query('division', ''))) : null;
 
         if ($anio) {
-            $this->assertCanOperar($req, $anio, $division);
+            $this->assertCanVerCurso($req, $anio, $division);
         }
 
         $scopeIds = $this->scopeCursoIds($req);
@@ -1206,7 +1263,7 @@ class AsistenciaController extends Controller
         $clase = Clase::with('curso:id,anio,division')->findOrFail($claseId);
 
         $req->setUserResolver(fn() => $user);
-        $this->assertCanOperar($req, (int) $clase->curso->anio, $clase->curso->division);
+        $this->assertCanVerCurso($req, (int) $clase->curso->anio, $clase->curso->division);
 
         $filas = Asistencia::where('clase_id', $clase->id)
             ->join('alumnos as al', 'al.id', '=', 'asistencias.alumno_id')

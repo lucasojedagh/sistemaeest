@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import useAviso from "../../compartido/componentes/modals/useAviso";
 import { CalendarDays, Loader, Pencil, Plus, Trash2, Clock, AlertCircle } from "lucide-react";
 import { asistenciaApi } from "../../compartido/api/asistencia";
-import { ESTADO_CLASE_LABELS, fmtFecha } from "../../compartido/lib/asistencia";
+import { ESTADO_CLASE_LABELS, fmtFecha, esCursoEditable } from "../../compartido/lib/asistencia";
 import CoursePicker from "./CoursePicker";
 import EmptyState from "../../compartido/componentes/Common/EmptyState";
 import { mensajeAmable } from "../../compartido/lib/errores";
 import { useToast } from "../../compartido/componentes/Common/Toast";
 import usePasswordPrompt from "../../compartido/componentes/modals/usePasswordPrompt";
+import { esGestion } from "../auth/roles";
 import "./ClasesAsistencia.css";
 
 const mesActual = () => {
@@ -41,7 +42,7 @@ export default function ClasesAsistencia({ maps, user, onEdit, refreshKey = 0 })
   const [error, setError] = useState(null);
 
   const cursoOk = curso.anio && curso.division && curso.division !== "*";
-  const puedeEliminar = ["admin", "directivo", "jefe_preceptores"].includes(user?.role);
+  const puedeEliminar = esGestion(user?.role);
 
   useEffect(() => {
     if (!cursoOk) return;
@@ -73,7 +74,12 @@ export default function ClasesAsistencia({ maps, user, onEdit, refreshKey = 0 })
       }));
       showToast("Clase eliminada.", "success");
     } catch (err) {
-      mostrarAviso({ icon: "error", title: "No se pudo borrar", text: mensajeAmable(err, "Intentá de nuevo.") });
+      // Si el servidor bloqueó el borrado (la clase tiene justificaciones),
+      // su mensaje explica qué hay que hacer en lugar del aviso genérico.
+      const texto = err?.status === 422 && err?.data?.message
+        ? err.data.message
+        : mensajeAmable(err, "Intentá de nuevo.");
+      mostrarAviso({ icon: "error", title: "No se pudo borrar", text: texto });
     }
   }
 
@@ -82,12 +88,13 @@ export default function ClasesAsistencia({ maps, user, onEdit, refreshKey = 0 })
   return (
     <div className="clases-container">
       <div className="clases-filters-card">
+        {/* Solapa de lectura: se eligen cursos aunque no se puedan marcar. */}
         <CoursePicker maps={maps} value={curso} onChange={setCurso} />
         <div>
           <label className="clases-label">Mes</label>
           <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="clases-month-input" />
         </div>
-        {cursoOk && (
+        {cursoOk && esCursoEditable(maps?.editables, curso.anio, curso.division) && (
           <button type="button" onClick={() => onEdit && onEdit({ curso, fecha: `${mes}-01` })} className="clases-btn-nueva">
             <Plus className="clases-btn-icon" /> Pasar lista de este mes
           </button>

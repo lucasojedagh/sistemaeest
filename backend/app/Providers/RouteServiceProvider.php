@@ -4,9 +4,11 @@
 
 namespace App\Providers;
 
+use App\Dominios\Usuarios\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 
@@ -27,8 +29,24 @@ class RouteServiceProvider extends ServiceProvider
     // Configura limitadores de frecuencia y carga las rutas de api.php y web.php.
     public function boot(): void
     {
+        // El limitador 'api' corre ANTES del middleware de sesion (auth.token),
+        // asi que aca $request->user() todavia es null. Si se usa la IP, en el
+        // colegio —donde todos salen por la misma direccion— los 60 pedidos por
+        // minuto se reparten entre todas las cuentas abiertas y la pantalla
+        // empieza a responder "Demasiados intentos". Por eso la cuenta se saca
+        // de la misma caché que llena auth.token (5 minutos) y cada usuario tiene
+        // su propio cupo. Sin sesion valida se sigue agrupando por IP, que es lo
+        // que frena a quien manda tokens inventados.
         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+            $token = (string) $request->bearerToken();
+            if ($token !== '') {
+                $dueno = Cache::get('auth_token_' . $token);
+                if ($dueno instanceof User && $dueno->id) {
+                    return Limit::perMinute(180)->by('usuario:' . $dueno->id);
+                }
+            }
+
+            return Limit::perMinute(60)->by($request->ip());
         });
 
         // Login: 5 intentos por minuto POR CUENTA (email+IP), no por IP sola.

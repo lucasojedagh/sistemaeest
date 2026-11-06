@@ -3,7 +3,7 @@
 // ===============================
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { X } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
 import useAviso from "../../compartido/componentes/modals/useAviso";
 import { cursoLabel } from "../../compartido/lib/cursos";
 import "./EditarDivisionesModal.css";
@@ -53,6 +53,7 @@ export default function EditarDivisionesModal({
 
   const [local, setLocal] = useState(initialLocal);
   const [saving, setSaving] = useState(false);
+  const { montado, cerrando } = useCierreAnimado(visible);
   const originalRef = useRef(initialLocal);
 
   // Los anos a editar: 1..7 siempre, mas cualquier anio mayor que exista en "value".
@@ -194,30 +195,13 @@ export default function EditarDivisionesModal({
 
   return (
     <>
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          className="modal-ediv-overlay"
-          initial={false}
-          exit={{ opacity: 0 }}
-        >
+      {montado && (
+        <div className={`modal-ediv-overlay sys-capa${cerrando ? " sys-cerrando" : ""}`}>
           {/* Modal */}
-          <motion.div
-            className="modal-ediv-dialog"
+          <div
+            className={`modal-ediv-dialog sys-dialogo${cerrando ? " sys-cerrando" : ""}`}
             role="dialog"
             aria-modal="true"
-            initial={{ y: -10, scale: 0.98 }}
-            animate={{
-              y: 0,
-              scale: 1,
-              transition: { type: "spring", stiffness: 260, damping: 22 },
-            }}
-            exit={{
-              opacity: 0,
-              y: -12,
-              scale: 0.98,
-              transition: { duration: 0.18 },
-            }}
           >
             {/* Header */}
             <div className="modal-ediv-header">
@@ -303,10 +287,9 @@ export default function EditarDivisionesModal({
                 </button>
               </div>
             </div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
-    </AnimatePresence>
       {avisoModal}
     </>
   );

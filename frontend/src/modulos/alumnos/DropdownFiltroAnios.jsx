@@ -2,8 +2,9 @@
 // FILE: src/components/Alumnos/DropdownFiltroAnios.jsx
 // ===============================
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { cargarDivisiones } from "../../compartido/lib/divisiones";
-import { motion, AnimatePresence } from 'framer-motion';
+import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
 import { cursoLabel, parseCurso } from '../../compartido/lib/cursos';
 import "./DropdownFiltroAnios.css";
 
@@ -71,6 +72,7 @@ const DropdownFiltroAnios = ({
   className = ''
 }) => {
   const [open, setOpen] = useState(false);
+  const { montado, cerrando } = useCierreAnimado(open, 150);
   const ref = useRef(null);
 
   // Si no recibimos cursos por props, cargamos desde /api/divisiones
@@ -143,14 +145,9 @@ const DropdownFiltroAnios = ({
         </motion.span>
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ y: -10 }}
-            animate={{ y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="dropdown-anios-panel"
+      {montado && (
+          <div
+            className={`dropdown-anios-panel sys-desplegable${cerrando ? " sys-cerrando" : ""}`}
           >
             <div>
               {/* Opción para todos */}
@@ -194,9 +191,9 @@ const DropdownFiltroAnios = ({
                 );
               })}
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      
     </div>
   );
 };

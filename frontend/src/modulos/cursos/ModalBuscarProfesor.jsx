@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../../compartido/lib/api";
 import { cargarDivisiones } from "../../compartido/lib/divisiones";
 import { AnimatePresence, motion } from "framer-motion";
+import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
 import { Search, X, ArrowRight, StopCircle, ChevronDown } from "lucide-react";
 import { cursoLabel } from "../../compartido/lib/cursos";
 import "./ModalBuscarProfesor.css";
@@ -450,8 +451,6 @@ export default function ModalBuscarProfesor({
       });
   }, [results, selectedProfesorId]);
 
-  const springy = { type: "spring", stiffness: 300, damping: 24 };
-
   /* Maneja el clic del boton principal: Buscar o Cancelar segun el estado */
   const onPrimaryClick = () => {
     if (loading) {
@@ -481,24 +480,21 @@ export default function ModalBuscarProfesor({
     [divisionesMapa]
   );
 
+  const { montado, cerrando } = useCierreAnimado(visible);
+
   return (
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          className="mbp-overlay"
-          initial={false}
-          exit={{ opacity: 0 }}
+    <>
+      {montado && (
+        <div
+          className={`mbp-overlay sys-capa${cerrando ? " sys-cerrando" : ""}`}
           onMouseDown={(e) => {
             if (e.currentTarget === e.target) closeWithSnapshot();
           }}
         >
-          <motion.div
-            className="mbp-dialog"
+          <div
+            className={`mbp-dialog sys-dialogo-sup${cerrando ? " sys-cerrando" : ""}`}
             role="dialog"
             aria-modal="true"
-            initial={{ y: -8, scale: 0.98 }}
-            animate={{ y: 0, scale: 1, transition: springy }}
-            exit={{ y: -8, opacity: 0, scale: 0.98 }}
           >
             {/* Header */}
             <div className="mbp-header">
@@ -774,9 +770,9 @@ export default function ModalBuscarProfesor({
                 </div>
               </div>
             </motion.div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 }

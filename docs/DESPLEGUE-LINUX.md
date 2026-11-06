@@ -40,23 +40,29 @@ reversible un cambio: poder volver a la versión anterior en un minuto.
 Dos archivos, y cada uno se usa para una cosa distinta:
 
 **a) `backend/.env.docker`** — es el `env_file` del contenedor de Laravel.
-Arranca con valores que ya funcionan; en el server hay que revisar tres:
+En el server hay que revisar tres cosas, y `scripts/iniciar.sh` se niega a
+levantar nada si alguna sigue con el valor del repo (bloque `[0/5]`):
 
-- `APP_KEY`: la que está en el repo sirve para arrancar, pero es pública. Generar
-  una propia (§4) y **no perderla**: con otra key se leen mal las cookies y los
-  datos cifrados viejos.
-- `FRONTEND_URL`: tiene que ser el origen real con el que entran los preceptores
-  (`http://192.168.1.20` o `http://sistema.escuela.edu.ar`). **Este valor arma el
-  link de "recuperar contraseña"** que sale en el correo: si queda en `localhost`,
-  el mail no abre desde ningún otro equipo.
+- `APP_KEY`: **viene vacía a propósito**. La clave que estaba en el archivo se
+  subió al repositorio público, así que no es secreta: cualquiera con el repo
+  puede descifrar cookies y campos cifrados. Se genera la propia y se **pega en
+  esta misma línea** (§4). Anotarla fuera del server: con otra key se leen mal
+  los datos cifrados viejos, y no hay forma de recuperarlos.
+- `APP_URL` y `FRONTEND_URL`: tienen que ser el origen real con el que entran
+  los preceptores (`http://192.168.1.20` o `http://sistema.escuela.edu.ar`).
+  **Este valor arma el link de "recuperar contraseña"** que sale en el correo:
+  si queda en `localhost`, el mail no abre desde ningún otro equipo y el API no
+  sabe a qué host responder.
 - `MAIL_*`: por defecto apuntan a `mailpit`, que es una bandeja de prueba local.
   Para correo real del colegio, poner el SMTP de la institución y apagar
-  mailpit en el arranque (§5).
+  mailpit en el arranque (§5). El preflight lo avisa pero no aborta: el sistema
+  funciona igual, solo que los correos no salen.
 
 `APP_ENV=production` y `APP_DEBUG=false` ya vienen puestos. Con `APP_DEBUG=true`
 cualquier error 500 mostraría en pantalla la traza completa, con las consultas
-SQL incluidas, a cualquier preceptor que entre. Se deja en `true` únicamente para
-diagnosticar, y se reinicia el contenedor: `docker compose restart backend`.
+SQL incluidas, a cualquier preceptor que entre (el preflight también lo frena).
+Se deja en `true` únicamente para diagnosticar, y se reinicia el contenedor:
+`docker compose restart backend`.
 
 **b) `.env` al lado del `docker-compose.yml`** — crea ahí mismo el archivo
 (opcional, son los valores que lee Compose):
@@ -69,27 +75,74 @@ EOF
 ```
 
 `ENRO_HTTP_PORT` define dónde entra la escuela (`80` para escribir solo la IP,
-sin `:8000`). `ENRO_DB_PASSWORD` es la clave de root de MySQL: si no se pone,
-quedará `root`, que es el default del desarrollo y no sirve en producción.
+sin `:8000`); `iniciar.sh` lee este archivo, así que el puerto que muestra al
+final y la prueba de `/api/ping` son los reales, no los del default.
+`ENRO_DB_PASSWORD` es la clave de root de MySQL: sin ella quedaría `root`, que
+es el default del desarrollo. **En el server es obligatorio** — es la clave de
+la base con los 1200 alumnos, y el compose la usa también para el backend.
+
+No hace falta un usuario de MySQL aparte: el puerto 3306 del contenedor no se
+publica (solo `127.0.0.1:3307` para herramientas del propio server), así que el
+`root` solo se usa desde la red interna del compose. Si igual se quiere un
+usuario propio, se crea con `CREATE USER` y se cambian `DB_USERNAME` y el
+`MYSQL_ROOT_PASSWORD` del servicio, sin tocar la key de la app.
 
 ## 4. Levantar el sistema
+
+Primero la clave de la app, **antes** de correr `iniciar.sh` (el preflight no
+deja levantar sin ella):
+
+```bash
+printf 'base64:%s\n' "$(openssl rand -base64 32)"
+```
+
+Esa salida se pega en la línea `APP_KEY=` de `backend/.env.docker` (queda
+`APP_KEY=base64:xxxx...`) y se anota en un papel aparte. Se puede generar
+también con `docker compose run --rm backend php artisan key:generate --show`,
+pero `openssl` no necesita tener la imagen construida.
+
+> **Por qué se edita `.env.docker` y no se corre `key:generate` a secas:** el
+> `key:generate` del contenedor escribe en `backend/.env`, y el `APP_KEY` que
+> pasa el `env_file` de Compose **le gana** — Laravel carga el `.env` con un
+> repositorio *immutable* que no pisa variables que ya existen en el entorno,
+> aunque estén vacías. Medido con el propio `phpdotenv` del proyecto:
+> `APP_KEY=` vacío en `.env.docker` → el valor del `.env` nunca se aplica, y el
+> sistema queda con "No application encryption key" aunque el archivo esté lleno.
+
+Después:
 
 ```bash
 bash scripts/iniciar.sh
 ```
 
-Hace, en orden: construir imágenes → levantar contenedores → esperar a que MySQL
-esté sano → `composer install --optimize-autoloader` → `migraciones --force` →
-`storage:link` → verificar `/api/ping`.
+Hace, en orden, y aborta antes de tocar Docker si la configuración está incompleta:
 
-Después, generar la clave propia de la app y crear el usuario admin:
+| Paso | Qué corre | Si falla |
+|---|---|---|
+| `[0/5]` | preflight: `APP_KEY`, `APP_DEBUG`, `APP_URL`/`FRONTEND_URL`, `ENRO_DB_PASSWORD`, mailpit, los dos cron | lista los errores y no levanta nada |
+| `[1/5]` | `docker compose build` | `docker compose build --no-cache backend` |
+| `[2/5]` | `up -d` + espera al healthcheck de MySQL (60 × 2 s) | `docker compose logs mysql` |
+| `[3/5]` | `composer install --optimize-autoloader` | falta `vendor/`, o sin red |
+| `[4/5]` | `migrate --force`, `esquema:verificar`, `storage:link`, `chown` de `storage/` y `bootstrap/cache` | ver §10 |
+| `[5/5]` | `curl /api/ping` | `docker compose logs backend nginx` |
+
+En una base **vacía**, después de que levante, crear lo mínimo que necesita una
+escuela real:
 
 ```bash
-cp backend/.env.docker backend/.env         # artisan edita el .env correcto
-docker compose exec backend php artisan key:generate --force
-docker compose exec backend php artisan migrate --seed --force
-docker compose restart backend              # para que tome la APP_KEY nueva
+docker compose exec backend php artisan db:seed --class=AdminUserSeeder --force
+docker compose exec backend php artisan db:seed --class=ParametroDivisionesSeeder --force
 ```
+
+El primero imprime la clave del admin **una sola vez** (o usa `ADMIN_PASSWORD`
+si lo definís); anotarla. Los cursos y los alumnos reales entran por la
+importación de la planilla, no por seed.
+
+> **No correr `php artisan migrate --seed` en el server.** `DatabaseSeeder`
+> encadena `AlumnoSeeder`, `DemoDataSeeder` y `ProfesorSeeder`, que meten los
+> alumnos, materias y profesores de demostración (los mismos 57 de prueba que
+> se borraron de la base de trabajo). Es el comando del desarrollo local; en
+> producción solo los dos seeders de arriba.
 
 ## 5. Verificar que está servido (no solo levantado)
 
@@ -144,28 +197,50 @@ Si se quieren `.sql` por correo, instalar `mysql-client` en la imagen de backend
 (fijándose de que la versión coincida con MySQL 8; el cliente de MariaDB no
 soporta el método de autenticación default de MySQL 8 y falla en silencio).
 
-**b) Desde el server, por cron** — volcado nocturno dentro del contenedor de
-MySQL y retención de 14 días:
+**b) Desde el server, por cron** — un comando instala los dos agendamientos que
+el sistema necesita (volcado nocturno de la base + planificador de Laravel):
 
-```cron
-0 3 * * * docker compose -f /opt/escuela/Sistema-ENRO/docker-compose.yml exec -T mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction sistema_escuela' | gzip > /var/backups/enro/bd_$(date +\%Y-\%m-\%d).sql.gz
-15 3 * * * find /var/backups/enro -name 'bd_*.sql.gz' -mtime +14 -delete
+```bash
+bash scripts/instalar-cron.sh
+ENRO_BACKUP_DIR=/otro/disco bash scripts/instalar-cron.sh    # si los respaldos van en otro lado
+```
+
+Agrega al crontab del usuario actual, y reemplaza lo que ya haya puesto (las
+líneas van marcadas con `ENRO_RESPALDO=1` / `ENRO_SCHEDULE=1`, así es
+idempotente y no toca el cron de ninguna otra app):
+
+| Cuándo | Qué corre | Para qué |
+|---|---|---|
+| 03:00 | `scripts/respaldar-bd.sh` | `mysqldump --single-transaction` dentro del contenedor de MySQL, gzip, verificación y retención de 14 días |
+| cada minuto | `php artisan schedule:run` | es lo que hace correr `backups:prune` (borra los `.sql` de la pantalla de Respaldos más viejos de 30 días); sin esta línea esa carpeta crece para siempre |
+
+Las corridas escriben en `/var/backups/enro/cron.log` y `schedule.log` (no a
+`/var/log`, que pide `sudo`). El script de respaldo también se puede correr a
+mano antes de un cambio riesgoso:
+
+```bash
+ENRO_BACKUP_DIR=/var/backups/enro bash scripts/respaldar-bd.sh
 ```
 
 `--single-transaction` es lo que evita que el dump bloquee las tablas mientras
-los preceptores están trabajando. Copiar `/var/backups/enro` fuera del server
-(otro disco o la nube) al menos una vez por semana: el respaldo que vive junto a
-la base no sirve si se muere el disco.
+los preceptores están trabajando.
 
-**c) Cron de Laravel** — `backups:prune` (borra respaldos viejos del sistema,
-conserva los 3 más nuevos) corre solo si existe la entrada de `schedule:run`:
+> **Por qué el volcado vive en un script y no en la línea del crontab** (como
+> estaba documentado antes): la línea larga terminaba en
+> `... > bd_$(date...).sql.gz >> cron.log 2>&1` y la segunda redirección
+> **reemplaza** la primera, así que el `.sql.gz` quedaba de 0 bytes y el
+> binario gzip iba a parar al log. En cron no hay nadie mirando: el respaldo
+> "existía" todos los días y no servía ninguno. El script además verifica —
+> rechaza el volcado vacío y el que no cierra con `-- Dump completed`, que es
+> lo que distingue un dump truncado de uno bueno (probado contra un
+> `mysqldump` real de esta base, 906 KB).
 
-```cron
-* * * * * cd /opt/escuela/Sistema-ENRO && docker compose exec -T backend php artisan schedule:run >> /var/log/enro-schedule.log 2>&1
-```
+Copiar `/var/backups/enro` fuera del server (otro disco o la nube) al menos una
+vez por semana: el respaldo que vive junto a la base no sirve si se muere el
+disco.
 
-Y además hay que respaldar `backend/storage/` (documentos y fotos subidas, que
-no viven en MySQL sino en disco) y el volumen `mysql_data`.
+**c) Qué respaldar además** — `backend/storage/` (documentos y fotos subidas,
+que no viven en MySQL sino en disco) y el volumen `mysql_data`.
 
 ## 8. Rendimiento: qué está activado y qué falta
 
@@ -220,12 +295,16 @@ es: el código, un `.sql` restaurable y la carpeta `storage/`.
 |---|---|---|
 | Página en blanco o 502 | `docker compose logs nginx backend` | el backend no levantó: ver el log de PHP-FPM |
 | 500 con página genérica | `docker compose logs backend` o `backend/storage/logs` | con `APP_DEBUG=false` el detalle solo se ve en el log |
-| "No application encryption key" | `backend/.env` dentro del contenedor | correr `key:generate` (§4) y `docker compose restart backend` |
 | No llega el correo de recupero | `docker compose logs backend mailpit` | `FRONTEND_URL` mal puesto (§3) o SMTP sin credenciales |
 | El login funciona lento o da parpadeos | `docker compose ps` | revisar que no haya un `npm run dev` peleando el puerto |
 | "Access denied for user root" | `ENRO_DB_PASSWORD` | la clave del compose y la del volumen tienen que coincidir; si el volumen ya existía con otra, hay que cambiarla dentro de MySQL |
 | Puerto ya en uso | `ss -lntp \| grep <puerto>` | liberar el puerto o cambiar `ENRO_HTTP_PORT` |
 | "Permission denied" escribiendo en `storage/` o `bootstrap/cache/` | `docker compose logs backend` | PHP-FPM corre como `www-data` (uid **82** adentro de la imagen). En el host: `sudo chown -R 82:82 backend/storage backend/bootstrap/cache` |
+| `iniciar.sh` aborta en `[0/5]` sin tocar nada | los `ERROR:` que imprime | es el preflight: falta `APP_KEY`, o `APP_URL`/`FRONTEND_URL` en `localhost`, o `ENRO_DB_PASSWORD` no puesto (§3 y §4) |
+| "No application encryption key" con `APP_KEY` llena en `backend/.env` | `docker compose exec backend sh -c 'echo "$APP_KEY"'` | el `env_file` define `APP_KEY=` vacía y **le gana** al `.env`: la clave va en `backend/.env.docker`, no en `backend/.env` (§4) |
+| `esquema:verificar` imprime `FALTA`/`SOBRA` | la lista que sale en el terminal | alguien corrió un `ALTER` a mano: convertirlo en migración (§12) |
+| Los respaldos por cron no aparecen o salen de 0 bytes | `${ENRO_BACKUP_DIR:-/var/backups/enro}/cron.log` | el usuario del cron no está en el grupo `docker`, o el agendamiento nunca se instaló: `bash scripts/instalar-cron.sh` (§7b) |
+| `backend/storage/app/backups` no se limpia nunca | `crontab -l \| grep schedule` | falta la línea de `schedule:run`: sin ella `backups:prune` no corre (§7b) |
 
 Para entrar a la base desde el propio server (diagnóstico, nunca para editar
 datos de alumnos a mano):
@@ -234,3 +313,125 @@ datos de alumnos a mano):
 # La clave se lee adentro del contenedor (MYSQL_ROOT_PASSWORD), no del shell del host.
 docker compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" sistema_escuela'
 ```
+
+## 11. Sin Docker: `npm run build` y el `dist` en el server
+
+Es el camino corto cuando el colegio ya tiene un Apache/nginx con PHP levantado:
+se compila el frontend acá y se copia el `dist` al server. Tres reglas, y las
+tres se prueban juntas con el simulador de la sección final:
+
+**a) El `dist` va en la RAÍZ del sitio**, no en una subcarpeta. Los assets del
+build se referencian con `/assets/...` (ruta absoluta desde el origen); si el
+SPA queda en `http://server/sistema/`, el navegador pide `/assets/...` y no
+existe: pantalla en blanco. Para publicar en una subcarpeta hay que recompilar
+con `base` en `vite.config.js`, no copiar el mismo `dist`.
+
+**b) El server tiene que enrutar al backend lo que NO es del SPA.** Con `VITE_API_BASE`
+sin definir, un build de producción usa `/api`: mismo origen que la página. El
+servidor web tiene que mandar a Laravel `/api/`, `/print/`, `/storage/` y los
+imprimibles exactos (`/calificaciones/planilla`, `/calificaciones/planilla/excel`,
+`/calificaciones/planilla/guardar`, `/horarios/planilla`); todo lo demás se sirve
+desde el `dist` con fallback a `index.html` (si no, recargar `/alumnos` da 404).
+Si la API vive en OTRO host, quemar la URL en el build:
+`VITE_API_BASE=https://api.escuela.edu.ar/api npm run build` y abrir el CORS de ese
+backend (`backend/config/cors.php`).
+
+nginx, ya sin contenedores:
+
+```nginx
+root /var/www/enro/dist;                 # el dist copiado acá
+index index.html;
+
+location ^~ /assets/ { add_header Cache-Control "public, max-age=31536000, immutable"; try_files $uri =404; }
+location /api/       { try_files $uri $uri/ /index.php?$query_string; }         # Laravel
+location /print/     { try_files $uri $uri/ /index.php?$query_string; }
+location /storage/   { try_files $uri $uri/ /index.php?$query_string; }
+location = /calificaciones/planilla         { try_files $uri $uri/ /index.php?$query_string; }
+location = /calificaciones/planilla/excel   { try_files $uri $uri/ /index.php?$query_string; }
+location = /calificaciones/planilla/guardar { try_files $uri $uri/ /index.php?$query_string; }
+location = /horarios/planilla               { try_files $uri $uri/ /index.php?$query_string; }
+
+location / { try_files $uri $uri/ /index.html; }   # fallback SPA
+```
+
+**c) `APP_DEBUG=false` en el backend del server.** Con `true`, cualquier error
+devuelve la traza completa con SQL y rutas de archivo — y esa traza la ve el
+preceptor que abrió el link. Ver §3.
+
+Probar el `dist` tal cual antes de llevarlo (sirve el build con el mismo
+encaminado que va a tener en el server, usando el `php artisan serve` local como
+backend):
+
+```bash
+cd frontend && npm run build
+node scripts/servidor-publicacion.js 4173      # desde la raíz del proyecto
+# abrir http://localhost:4173, loguear y recorrer los módulos
+```
+
+Si algo falla ahí, falla idéntico en el colegio; si anda acá, anda allá.
+
+## 12. El esquema: todo cambio va en una migración
+
+`base-de-datos/schema.sql` es una **foto**, no la definición de la base. La foto
+se actualiza a mano y se pone linda, pero el server se construye con las
+migraciones de `backend/database/migrations/`. Cuando algo se cambia con un
+`ALTER` directo (el clásico "lo desbloqueo ahora y la migración la hago
+después"), el server nuevo queda distinto del que funciona, y nadie se entera
+hasta que un insert de la escuela real choca contra un índice que no debería
+estar ahí.
+
+Pasó dos veces y las dos se arreglaron en `2026_11_05_000007_especialidad_de_curso_y_materias_unique.php`:
+
+- `cursos.especialidad` existía en la base de trabajo y en `schema.sql`, pero
+  ninguna migración la creaba: un server nuevo no tenía la columna y
+  `HorarioController` (que la lee para armar la planilla) rompía.
+- El `UNIQUE` de `materias` estaba en `(anio, nombre, tipo)` mientras la base de
+  trabajo tenía `(anio, nombre, tipo, coalesce(especialidad,''))`. Con el viejo,
+  la misma materia dictada en dos especialidades del mismo año daba
+  `ERROR 1062 Duplicate entry` al cargar el plan de estudios por planilla. El
+  índice nuevo es **funcional**: `NULL` y `''` cuentan igual, así que una materia
+  sin especialidad cargada dos veces sigue siendo un duplicado real y frena.
+
+Por qué no lo agarraron las pruebas: `backend/phpunit.xml` corre sobre
+`sqlite :memory:` y **ninguna migración se ejecuta** (todas son SQL de MySQL).
+El `--seed` de desarrollo tampoco las corre, porque la base local ya estaba
+armada. O sea: el único mecanismo que detecta el drift tiene que ser explícito.
+
+```bash
+php artisan esquema:verificar          # o dentro del contenedor
+docker compose exec backend php artisan esquema:verificar
+```
+
+Crea una base auxiliar `<su-base>_esquema_check`, le aplica **todas** las
+migraciones desde cero, saca la huella de columnas e índices de las dos bases y
+las compara. Imprime `FALTA ...` (está en la base de trabajo y ninguna migración
+lo crea) o `SOBRA ...` (lo crean las migraciones y la base no lo tiene) y
+devuelve código de salida `1` si hay cualquier diferencia; la base auxiliar se
+borra sola (`--dejar` la conserva para revisar a mano). Necesita permisos de
+`CREATE/DROP DATABASE`, que el `root` del compose tiene.
+
+`scripts/iniciar.sh` lo corre en el paso `[4/5]` después de `migrate`, así que
+el drift se ve en cada despliegue. No aborta el arranque: el sistema funciona
+igual, pero la diferencia hay que convertir en migración antes del próximo
+`git pull`.
+
+Regla para escribir la migración que falta: idempotente, con los guardas contra
+`information_schema` (mirar `2026_11_05_000005_quitar_indices_redundantes.php` y
+la `000007`), con `down()` que revierta de verdad, y sin tocar nunca un índice
+`UNIQUE` sin decir por qué. Después, regenerar `base-de-datos/schema.sql` desde
+una base migrada desde cero — no desde la del colegio — para que la foto vuelva
+a representar al código.
+
+## 13. Checklist de entrega (lo que se revisa antes de decir "está publicado")
+
+1. `bash scripts/iniciar.sh` pasa el `[0/5]` sin errores y termina con
+   `API respondiendo OK`.
+2. `docker compose exec backend php artisan esquema:verificar` → `Esquema idéntico`.
+3. Desde **otro** equipo de la red del colegio: abrir `http://<IP>/`, loguear,
+   recorrer el padrón de un curso grande y el Inicio.
+4. Recuperar contraseña: pedir el mail desde una cuenta real y abrir el link
+   desde el navegador de otro equipo (prueba `FRONTEND_URL` y el SMTP juntos).
+5. `bash scripts/instalar-cron.sh` corrida, y el `respaldar-bd.sh` a mano dejó un
+   `.sql.gz` que pasa `gzip -t` y termina en `-- Dump completed`.
+6. Restaurar ese `.sql.gz` en una base auxiliar y contar los alumnos: un respaldo
+   que nunca se restauró no es un respaldo.

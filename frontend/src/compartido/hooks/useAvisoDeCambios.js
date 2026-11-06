@@ -19,6 +19,11 @@ import { guardarSello, hayCambios, cambioPropioVigente } from "../lib/dataStamp"
 // Uso: useAvisoDeCambios('alumnos', ['alumnos','cursos'], actualizarTodo);
 const MS_SONDEO = 12000;
 
+// Cuanto se pausa el sondeo despues de un fallo de red o de cupo (429). Sin esta
+// pausa, una pantalla que no puede leer el sello sigue preguntando cada 12
+// segundos y castiga justo el endpoint que ya está saturado.
+const MS_PAUSA_AL_FALLAR = 45000;
+
 // Cuanto se espera despues de cerrar un modal o salir de un campo: la animacion
 // de salida tiene que terminar para que el DOM refleje la pantalla desocupada.
 const MS_AL_DESOCUPARSE = 350;
@@ -44,9 +49,12 @@ export default function useAvisoDeCambios(pantalla, categorias, alActualizar) {
   // Cambios ajenos que esperan a que esta pantalla se desocupe para aplicarse.
   const enEspera = useRef(false);
   const alDesocupar = useRef(null);
+  // Sondeo en pausa tras un fallo (sin red o cupo lleno): evita seguir golpeando.
+  const pausaHasta = useRef(0);
 
   const comprobar = useCallback(async () => {
     if (!pantalla) return;
+    if (Date.now() < pausaHasta.current) return;
     try {
       const sello = await apiGet("/datos/sello");
       if (!sello || typeof sello !== "object") return;
@@ -72,7 +80,11 @@ export default function useAvisoDeCambios(pantalla, categorias, alActualizar) {
       guardarSello(pantalla, sello, lista);
       const r = fnRef.current?.();
       if (r && typeof r.catch === "function") await r;
-    } catch { /* sin red: se reintenta en el proximo sondeo */ }
+    } catch {
+      // Sin red o con el cupo de pedidos lleno: se hace una pausa larga y se
+      // reintenta después, en vez de seguir preguntando cada 12 segundos.
+      pausaHasta.current = Date.now() + MS_PAUSA_AL_FALLAR;
+    }
   }, [pantalla]);
 
   useEffect(() => {

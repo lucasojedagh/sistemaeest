@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import TareasFrecuentes from "./TareasFrecuentes";
 import AvisoNotasFinales from "./AvisoNotasFinales";
+import RevisionSistema from "./RevisionSistema";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   PieChart, Pie, Cell, Legend, CartesianGrid
@@ -466,10 +467,8 @@ const Dashboard = () => {
     rose:   "dash-accent-rose",
   };
   const card = (icon, title, value, subtitle, accent = "blue") => (
-    <motion.div
-      className="dash-kpi-card"
-      initial={{ opacity: 0, y: 6, scale: 0.99 }}
-      animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.25 } }}
+    <div
+      className="dash-kpi-card sys-tarjeta"
     >
       <div className={`dash-kpi-icon ${ACCENT[accent] || ACCENT.blue}`}>{icon}</div>
       <div className="dash-kpi-body">
@@ -477,14 +476,12 @@ const Dashboard = () => {
         <div className="dash-kpi-value">{value}</div>
         {subtitle && <div className="dash-kpi-subtitle">{subtitle}</div>}
       </div>
-    </motion.div>
+    </div>
   );
 
   const section = (title, icon, content, right=null) => (
-    <motion.section
-      className="dash-section"
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0, transition: { duration: 0.25 } }}
+    <section
+      className="dash-section sys-bloque"
     >
       <div className="dash-section-head">
         <div className="dash-section-title-wrap">
@@ -494,7 +491,7 @@ const Dashboard = () => {
         {right}
       </div>
       {content}
-    </motion.section>
+    </section>
   );
 
   const ProfTile = ({ label, value, total, icon, bg, fg, bar, to }) => {
@@ -527,7 +524,7 @@ const Dashboard = () => {
   const hasCache = lastTs != null;
   const { user } = useAuth();
   const userRole = (user?.role || '').toLowerCase();
-  const canBackup = userRole === 'admin' || userRole === 'jefe_preceptores';
+  const canBackup = ['admin', 'jefe_preceptores', 'prosecretaria'].includes(userRole);
 
   const top = {
     top_students: topPerformers?.top_students ?? [],
@@ -656,6 +653,9 @@ const Dashboard = () => {
             "rose"
           )}
         </div>
+
+        {/* Revisión de cobertura: huecos que la base no rechaza (solo gestión) */}
+        <RevisionSistema />
 
         {/* Fila 1 */}
         <div className="dash-grid dash-grid-3 dash-grid-row-mb">

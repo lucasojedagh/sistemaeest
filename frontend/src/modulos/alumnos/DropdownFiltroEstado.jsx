@@ -2,7 +2,8 @@
 // FILE: src/components/Alumnos/DropdownFiltroEstado.jsx
 // ===============================
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
 import "./DropdownFiltroEstado.css";
 
 /**
@@ -21,6 +22,7 @@ const OPTIONS = [
 
 const DropdownFiltroEstado = ({ value, onChange, className = '' }) => {
   const [open, setOpen] = useState(false);
+  const { montado, cerrando } = useCierreAnimado(open, 150);
   const ref = useRef();
 
   useEffect(() => {
@@ -60,14 +62,9 @@ const DropdownFiltroEstado = ({ value, onChange, className = '' }) => {
         </motion.span>
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ y: -10 }}
-            animate={{ y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="dropdown-estado-prof-panel"
+      {montado && (
+          <div
+            className={`dropdown-estado-prof-panel sys-desplegable${cerrando ? " sys-cerrando" : ""}`}
           >
             <div>
               {OPTIONS.map((opt, i) => (
@@ -80,9 +77,9 @@ const DropdownFiltroEstado = ({ value, onChange, className = '' }) => {
                 </div>
               ))}
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      
     </div>
   );
 };

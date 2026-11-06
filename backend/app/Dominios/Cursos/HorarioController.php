@@ -125,10 +125,8 @@ class HorarioController extends Controller
     // El parametro opcional 'grupo' permite filtrar por grupo (A, B o null).
     public function show(Request $request, int $anio, string $division): JsonResponse
     {
-        // Solo admin/directivo/jefe_preceptores o usuarios asignados al curso pueden ver el horario
-        if (!$this->userCanWriteAll($request) && !$this->userIsAssignedTo($request, $anio, $division)) {
-            abort(403, 'No tenés permiso para ver el horario de este curso.');
-        }
+        // Alcance de lectura del área de cursos sobre este curso.
+        $this->assertCanReadCurso($request, $anio, $division, 'cursos');
         $curso = $this->requireCurso($anio, $division);
 
         // Curso inexistente: se avisa con un mensaje claro en vez de fallar.
@@ -181,11 +179,10 @@ class HorarioController extends Controller
             abort(422, 'Faltan parámetros: anio, division');
         }
 
-        // Alcance por curso: solo gestión global o profesor/preceptor asignado
-        // al curso (sin_rol recibe 403). El token manual se inyecta al request
-        // para reutilizar la misma regla que el resto de lecturas.
+        // El token manual se inyecta al request para reutilizar la misma regla
+        // de alcance que el resto de las lecturas.
         $req->setUserResolver(fn() => $user);
-        $this->assertCanReadCurso($req, $anio, $division);
+        $this->assertCanReadCurso($req, $anio, $division, 'cursos');
         $grupoRaw = strtoupper(trim((string) $req->query('grupo', '')));
         $grupo    = in_array($grupoRaw, ['A', 'B'], true) ? $grupoRaw : null;
         $ciclo    = $req->integer('ciclo', date('Y'));

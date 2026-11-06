@@ -4,10 +4,11 @@
 // ===============================
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from "react-router-dom";
-import { Search, Plus, Download, SlidersHorizontal, X } from 'lucide-react';
+import { Search, Plus, Download, Upload, SlidersHorizontal, X } from 'lucide-react';
 import { descargarBlob, mensajeDescarga } from "../../compartido/lib/descarga";
 
 import AlumnoModal from './AlumnoModal';
+import ImportarAlumnosModal from './ImportarAlumnosModal';
 import AlumnoDetalle from './AlumnoDetalle';
 import AlumnoFicha from './AlumnoFicha';
 import HorarioAlumnoModal from './HorarioAlumnoModal';
@@ -30,6 +31,9 @@ import useAviso from "../../compartido/componentes/modals/useAviso";
 import { coincideBusqueda, coincideDni } from "../../compartido/lib/busqueda";
 import { ORDENES, ORDEN_DEFAULT, ordenarPersonas, leerOrden, guardarOrden } from "../../compartido/lib/orden";
 import { mensajeAmable } from "../../compartido/lib/errores";
+import { esGestion } from "../auth/roles";
+import { puede } from "../../compartido/lib/permisos";
+import { bloquearScroll } from "../../compartido/lib/lockScroll";
 import "./Alumnos.css";
 import {
   cursoLabel,
@@ -72,7 +76,7 @@ const Alumnos = () => {
   // Preceptor puede editar solo alumnos de sus cursos asignados
   const puedeEditarAlumno = useCallback((alumno) => {
     if (!user) return false;
-    if (['admin', 'directivo', 'jefe_preceptores'].includes(user.role)) return true;
+    if (esGestion(user.role)) return true;
     if (user.role === 'preceptor') {
       // Se usa la etiqueta del curso ("1ro 1ra"), mismo formato que el filtro de ambito:
       // el objeto normalizado del alumno no tiene anio/division numericos directos.
@@ -110,6 +114,9 @@ const Alumnos = () => {
 
 
   const [mostrarModal, setMostrarModal]   = useState(false);
+  // Alta masiva desde Excel: la ofrece sólo la gestión (mismo alcance que el backend).
+  const puedeImportar = !!user && esGestion(user.role) && puede(user, 'alumnos.importar');
+  const [mostrarImportar, setMostrarImportar] = useState(false);
   // Los atajos ("Inscribir un alumno") llegan con ?agregar=1: abre el modal directo.
   useEffect(() => {
     if (paramAgregar) setMostrarModal(true);
@@ -120,7 +127,7 @@ const Alumnos = () => {
 
   const [nuevoAlumno, setNuevoAlumno] = useState({
     nombre:'', apellido:'', fechaNacimiento:'', dni:'',
-    nacionalidad:'', matricula:'',
+    nacionalidad:'', matricula:'', email:'',
     genero:'', anio:'', curso: undefined,
     grupo: null,
     recursando:[], intensificacion:[],
@@ -205,6 +212,7 @@ const Alumnos = () => {
         dni: a.dni || '',
         nacionalidad: a.nacionalidad || '',
         matricula: a.matricula || '',
+        email: a.email || '',
         creado_en: a.creado_en || a.created_at || null,
         fechaNacimiento: a.fecha_nacimiento || a.fechaNacimiento || '',
         direccion: dir, telefono: tel,
@@ -298,11 +306,10 @@ const Alumnos = () => {
   };
 
   // Bloquea el scroll del body solo cuando hay al menos un modal abierto
-  const modalsOpen = [mostrarModal, mostrarDetalle, mostrarFicha, mostrarHorario].filter(Boolean).length;
+  const modalsOpen = [mostrarModal, mostrarDetalle, mostrarFicha, mostrarHorario, mostrarImportar].filter(Boolean).length;
   useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = modalsOpen > 0 ? 'hidden' : prev;
-    return () => { document.body.style.overflow = prev; };
+    if (modalsOpen === 0) return;
+    return bloquearScroll();
   }, [modalsOpen]);
 
   // Filtra alumnos por año y genero, respetando restricciones de ambito
@@ -339,7 +346,8 @@ const Alumnos = () => {
         || coincideBusqueda(nombreCompleto, q)
         || coincideBusqueda(nombreInvertido, q)
         || coincideDni(a.dni, q)
-        || coincideBusqueda(a.matricula || '', q);
+        || coincideBusqueda(a.matricula || '', q)
+        || coincideBusqueda(a.email || '', q);
       if (!okBusq) continue;
 
       filtrados.push(a);
@@ -441,6 +449,17 @@ const Alumnos = () => {
               <Download size={18} className="alumnos-btn-add-icon" />
               {descargandoPadron ? 'Descargando...' : 'Descargar lista'}
             </button>
+            {/* Alta masiva: primero revisa la planilla, después escribe */}
+            {puedeImportar && (
+              <button
+                onClick={() => setMostrarImportar(true)}
+                className="alumnos-btn-import"
+                title="Dar de alta varios alumnos desde una planilla de Excel"
+              >
+                <Upload size={18} className="alumnos-btn-add-icon" />
+                Importar Excel
+              </button>
+            )}
             {/* ⬇️ Ocultar botón si es PROFESOR */}
             {!isProfesor && (
               <button
@@ -462,7 +481,7 @@ const Alumnos = () => {
               <Search className="alumnos-search-icon" size={20} />
               <input
                 type="text"
-                placeholder="Buscar por nombre, apellido, DNI o matrícula..."
+                placeholder="Buscar por nombre, apellido, DNI, matrícula o correo..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
                 className="alumnos-search-input tb-search-input"
@@ -629,10 +648,18 @@ const Alumnos = () => {
         <HorarioAlumnoModal
           visible={!!mostrarHorario}
           alumno={mostrarHorario}
+          soloLectura={!!mostrarHorario && !puedeEditarAlumno(mostrarHorario)}
           onClose={() => setMostrarHorario(null)}
           onGuardar={(alumnoId, entradas) => {
             setAlumnos(prev => prev.map(a => a.id === alumnoId ? { ...a, horarioPersonalizado: entradas } : a));
           }}
+        />
+
+        {/* Modal Importar desde Excel: al terminar refresca el padrón */}
+        <ImportarAlumnosModal
+          visible={mostrarImportar}
+          onClose={() => setMostrarImportar(false)}
+          onTerminado={() => refrescarAlumnos().catch(() => {})}
         />
 
         {/* Modal Agregar */}
@@ -668,7 +695,7 @@ const Alumnos = () => {
               }
               setNuevoAlumno({
                 nombre:'', apellido:'', fechaNacimiento:'', dni:'',
-    nacionalidad:'', matricula:'',
+                nacionalidad:'', matricula:'', email:'',
                 genero:'', anio:'', curso: undefined,
                 grupo: null,
                 recursando:[], intensificacion:[],

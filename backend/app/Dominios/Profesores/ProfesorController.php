@@ -548,13 +548,14 @@ class ProfesorController extends Controller
         ]);
     }
 
-    // Cursos que el usuario puede ver. null = todos (roles de gestión global).
+    // Cursos que el usuario puede ver. null = todos (alcance de lectura total).
     // Replica el criterio de GET /horarios/{anio}/{division}, que era el que
     // filtraba durante el escaneo curso por curso.
     private function cursoIdsVisibles(Request $req): ?array
     {
-        if ($this->userCanWriteAll($req)) return null;
-        if (!$this->userCanReadAll($req)) {
+        $alcance = $this->alcanceVer($req, 'cursos');
+        if ($alcance === \App\Support\Alcances::TODO) return null;
+        if ($alcance === \App\Support\Alcances::NADA) {
             abort(403, 'No tenés permiso para consultar horarios.');
         }
 

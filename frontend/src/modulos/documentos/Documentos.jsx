@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef } from "react";
-import { motion } from "framer-motion";
 import { FileText, Upload, Download, Printer, Trash2, Search, Loader2, File, FileSpreadsheet, FileImage, FileArchive, Check, Pencil, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import Breadcrumbs from "../../compartido/componentes/Common/Breadcrumbs";
@@ -12,6 +11,7 @@ import { formatearFecha } from "../../compartido/lib/fechas";
 import useAviso from "../../compartido/componentes/modals/useAviso";
 import usePasswordPrompt from "../../compartido/componentes/modals/usePasswordPrompt";
 import useAvisoDeCambios from "../../compartido/hooks/useAvisoDeCambios";
+import { esGestion } from "../auth/roles";
 import "./Documentos.css";
 
 const fileIcon = (mime) => {
@@ -42,6 +42,7 @@ const ROLES_DOC = [
   { id: "admin", label: "Administradores" },
   { id: "directivo", label: "Directivos" },
   { id: "jefe_preceptores", label: "Jefe de preceptores" },
+  { id: "prosecretaria", label: "Prosecretaria" },
   { id: "preceptor", label: "Preceptores" },
   { id: "profesor", label: "Profesores" },
 ];
@@ -58,7 +59,7 @@ export default function Documentos() {
   const [, pedirConfirmacion, avisoModal] = useAviso();
   const [confirmarContrasena, modalPwd] = usePasswordPrompt();
   const fileRef = useRef(null);
-  const canManage = user?.role === "admin" || user?.role === "directivo" || user?.role === "jefe_preceptores" || user?.role === "preceptor";
+  const canManage = esGestion(user?.role) || user?.role === "preceptor";
 
   const [docs, setDocs] = useState(docsCache.get("")?.docs || []);
   const [loading, setLoading] = useState(!docsCache.has(""));
@@ -239,7 +240,7 @@ export default function Documentos() {
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="doc-page">
+    <div className="doc-page sys-pagina">
       <div className="doc-container">
         <div className="doc-header">
           <div>
@@ -484,6 +485,6 @@ export default function Documentos() {
       )}
       {avisoModal}
       {modalPwd}
-    </motion.div>
+    </div>
   );
 }

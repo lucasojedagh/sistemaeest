@@ -6,9 +6,11 @@ import "./Breadcrumbs.css";
 /*
  * Componente: Breadcrumbs
  * Props:
- *   items - Array de objetos { label, path? }
+ *   items - Array de objetos { label, path?, onClick? }
  *           Cada item representa un nivel del breadcrumb.
- *           Si tiene path, es un enlace clickeable; si no, es texto plano.
+ *           Con path u onClick es clickeable; sin ellos, texto plano.
+ *           `onClick` sirve para volver a una vista interna (ej: Roles y permisos),
+ *           donde no hay una ruta del enrutador a la que ir.
  *
  * Barra de navegacion secundaria (migas de pan) que muestra la ruta
  * actual dentro de la aplicacion. Incluye un boton de inicio que
@@ -28,8 +30,14 @@ export default function Breadcrumbs({ items = [] }) {
       {items.map((item, i) => (
         <React.Fragment key={i}>
           <ChevronRight size={14} className="breadcrumbs-sep" />
-          {item.path ? (
-            <button onClick={() => navigate(item.path)} className="breadcrumbs-link">
+          {item.path || item.onClick ? (
+            <button
+              onClick={() => {
+                if (item.onClick) item.onClick();
+                else navigate(item.path);
+              }}
+              className="breadcrumbs-link"
+            >
               {item.label}
             </button>
           ) : (

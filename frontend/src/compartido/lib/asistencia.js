@@ -60,3 +60,13 @@ export const fmtFecha = formatearFecha;
 
 export const cursoLabel = (anio, division) =>
   anio ? cursosCursoLabel({ anio, division }) : "—";
+
+// "editables" sólo viene del backend cuando la escritura es por curso asignado.
+// Sin lista, todos los cursos del mapa se pueden marcar.
+export function esCursoEditable(editables, anio, division) {
+  if (!Array.isArray(editables)) return true;
+  if (division === "*") return true;
+  return editables.some(
+    ([a, d]) => Number(a) === Number(anio) && (d === null || String(d) === String(division))
+  );
+}

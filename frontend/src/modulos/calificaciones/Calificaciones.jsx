@@ -15,6 +15,7 @@ import { createApiGate } from "../../compartido/lib/apiGate";
 import { getCached, setCache } from "../../compartido/lib/pageCache";
 import useAvisoDeCambios from "../../compartido/hooks/useAvisoDeCambios";
 import { useAuth } from '../auth/AuthContext';
+import { esGestion } from '../auth/roles';
 import { apiAmbito } from '../../compartido/api/auth';
 import { apiGet, API_BASE } from '../../compartido/lib/api';
 import { cargarDivisiones } from '../../compartido/lib/divisiones';
@@ -56,7 +57,7 @@ export default function Calificaciones() {
 
   const { user } = useAuth();
   const isProfesor = user?.role === 'profesor';
-  const puedeConfigurarVentana = ['admin', 'jefe_preceptores'].includes(user?.role);
+  const puedeConfigurarVentana = ['admin', 'jefe_preceptores', 'prosecretaria'].includes(user?.role);
   const [ambito, setAmbito] = useState(() => getCached('ambito') || null);
 
   const [ventana, setVentana] = useState(null);
@@ -145,7 +146,7 @@ export default function Calificaciones() {
 
   const puedeEditarCurso = (anio, division) => {
     if (!user) return false;
-    if (['admin', 'directivo', 'jefe_preceptores'].includes(user.role)) return true;
+    if (esGestion(user.role)) return true;
     if (ambito?.asignaciones?.length) {
       return ambito.asignaciones.some(a => Number(a.anio) === Number(anio) && (a.division || '').toUpperCase() === (division || '').toUpperCase());
     }
@@ -310,7 +311,7 @@ export default function Calificaciones() {
                 <div className="calif-dropdown-small">
                   <DropdownMini
                     value={ciclo} onChange={(v) => setCiclo(parseInt(v, 10))} placeholder="Ciclo" width={120}
-                    opciones={(() => { const y = new Date().getFullYear(); const arr = []; for (let i = y + 2; i >= y - 4; i--) arr.push({ value: i, label: String(i) }); return arr; })()}
+                    opciones={(() => { const y = new Date().getFullYear(); const arr = []; for (let i = y; i >= y - 4; i--) arr.push({ value: i, label: String(i) }); return arr; })()}
                   />
                 </div>
               </div>

@@ -34,7 +34,10 @@ class AlumnoCalificacionesController extends Controller
      */
     public function show(Request $req, Alumno $alumno)
     {
-        $this->assertCanGradeAlumno($req, $alumno);
+        // Leer el boletín es lectura: un preceptor (o un rol con alcance "todos")
+        // debe poder verlo aunque no pueda cargar notas en ese curso. El alta y la
+        // edición siguen pasando por assertCanGradeAlumno en update().
+        $this->assertCanReadCurso($req, $alumno->anio, $alumno->division, 'calificaciones');
 
         $cicloParam = $req->query('ciclo', $req->query('ciclo_lectivo'));
         $ciclo      = $this->normalizeCiclo($cicloParam);
@@ -289,11 +292,13 @@ class AlumnoCalificacionesController extends Controller
                     'entradas.*.tipo_calificacion'  => ['nullable','string','max:40'],
                     'entradas.*.materia_id'         => ['nullable','integer','min:1'],
                     'entradas.*.materia_nombre'     => ['nullable','string','max:120'],
-                    'entradas.*.notas'              => ['required','array','min:1'],
+                    'entradas.*.notas'              => ['required','array','min:1','max:' . AlumnoCalificacion::MAX_PARCIALES],
                     'entradas.*.notas.*.valor'      => ['nullable'],
                     'entradas.*.notas.*.fecha'      => ['nullable','date'],
                     'entradas.*.notas.*.descripcion' => ['nullable','string','max:500'],
                     'entradas.*.detalle'             => ['nullable','string','max:1000'],
+                ], [
+                    'entradas.*.notas.max' => 'Por cuatrimestre se registran como máximo ' . AlumnoCalificacion::MAX_PARCIALES . ' notas parciales.',
                 ]);
 
                 // La nota final solo se puede cargar cuando la ventana lo permite (para todos).
@@ -449,16 +454,18 @@ class AlumnoCalificacionesController extends Controller
             'alumnos.*.entradas.*.tipo_calificacion'   => ['nullable','string','max:40'],
             'alumnos.*.entradas.*.materia_id'          => ['nullable','integer','min:1'],
             'alumnos.*.entradas.*.materia_nombre'      => ['nullable','string','max:120'],
-            'alumnos.*.entradas.*.notas'               => ['required','array','min:1'],
+            'alumnos.*.entradas.*.notas'               => ['required','array','min:1','max:' . AlumnoCalificacion::MAX_PARCIALES],
             'alumnos.*.entradas.*.notas.*.valor'       => ['nullable'],
             'alumnos.*.entradas.*.notas.*.fecha'       => ['nullable','date'],
             'alumnos.*.entradas.*.notas.*.descripcion' => ['nullable','string','max:500'],
             'alumnos.*.entradas.*.detalle'             => ['nullable','string','max:1000'],
+        ], [
+            'alumnos.*.entradas.*.notas.max' => 'Por cuatrimestre se registran como máximo ' . AlumnoCalificacion::MAX_PARCIALES . ' notas parciales.',
         ]);
 
         $items = [];
         $user = $req->user();
-        $puedeFinalSiempre = in_array($user->role, ['admin', 'jefe_preceptores'], true);
+        $puedeFinalSiempre = in_array($user->role, ['admin', 'jefe_preceptores', 'prosecretaria'], true);
         $ventana = VentanaNotaFinal::actual();
         $ventanaAbierta = $ventana ? $ventana->estaAbierta() : false;
 
@@ -583,28 +590,14 @@ class AlumnoCalificacionesController extends Controller
             return response()->json(['message' => 'Faltan parámetros: anio, division, materia_id'], 422);
         }
 
-        // Verificar permiso para ver calificaciones de este curso
-        if (!$this->userCanWriteAll($req) && !$this->userIsAssignedTo($req, $anio, $division)) {
-            abort(403, 'No tenés permiso para ver calificaciones de este curso.');
-        }
+        // Permiso de lectura de calificaciones sobre este curso (alcance del rol).
+        $this->assertCanReadCurso($req, $anio, $division, 'calificaciones');
 
-        // Un profesor solo ve calificaciones de las materias que ensena en ese curso
-        // (o que cubre como suplente de otro profesor). Si no tiene ni
+        // Un alcance "solo los asignados" limita además a las materias que el
+        // docente enseña en ese curso (o que cubre como suplente). Si no tiene
         // asignaciones propias ni coberturas, queda el filtro por curso.
-        if (!$this->userCanWriteAll($req) && $req->user()->role === 'profesor') {
-            $profesor = \App\Dominios\Profesores\Profesor::where('email', $req->user()->email)->first();
-            $conAsignaciones = $profesor && \App\Dominios\Profesores\ProfesorAsignacion::where('profesor_id', $profesor->id)->exists();
-            $conCoberturas = $profesor && \App\Dominios\Profesores\ProfesorSuplencia::where('suplente_id', $profesor->id)->exists();
-            if ($conAsignaciones || $conCoberturas) {
-                $ensena = $profesor && \App\Dominios\Profesores\ProfesorAsignacion::where('profesor_id', $profesor->id)
-                    ->where('materia_id', $materiaId)
-                    ->where('anio', $anio)
-                    ->where('division', $division)
-                    ->exists();
-                if (!$ensena && !($profesor && \App\Support\Suplencias::cubreMateria($profesor->id, $materiaId, $anio, $division))) {
-                    abort(403, 'No tenés permiso para ver calificaciones de esta materia.');
-                }
-            }
+        if (!$this->materiaDentroDeAsignaciones($req, $anio, $division, $materiaId)) {
+            abort(403, 'No tenés permiso para ver calificaciones de esta materia.');
         }
 
         $materia = Materia::select(['id','nombre','anio'])->find($materiaId);
@@ -759,9 +752,7 @@ class AlumnoCalificacionesController extends Controller
      */
     public function aniosConNotas(Request $req, Alumno $alumno)
     {
-        if (!$this->userCanWriteAll($req) && !$this->userIsAssignedTo($req, $alumno->anio, $alumno->division)) {
-            abort(403, 'No tenés permiso para ver esta información.');
-        }
+        $this->assertCanReadCurso($req, $alumno->anio, $alumno->division, 'calificaciones');
 
         $q = DB::table('alumno_calificaciones as ac')
             ->where('ac.alumno_id', $alumno->id);
@@ -1194,11 +1185,10 @@ class AlumnoCalificacionesController extends Controller
             abort(422, 'Faltan parámetros: anio, division, materia_id');
         }
 
-        // Alcance por curso: solo gestión global o profesor/preceptor asignado
-        // al curso (sin_rol recibe 403). El token manual se inyecta al request
-        // para reutilizar la misma regla que el resto de lecturas.
+        // Alcance por curso según el mapa del rol. El token manual se inyecta al
+        // request para reutilizar la misma regla que el resto de lecturas.
         $req->setUserResolver(fn() => $user);
-        $this->assertCanReadCurso($req, $anio, $division);
+        $this->assertCanReadCurso($req, $anio, $division, 'calificaciones');
 
         $materia = Materia::select(['id','nombre','anio'])->findOrFail($materiaId);
 
@@ -1427,6 +1417,18 @@ class AlumnoCalificacionesController extends Controller
         $datos = $this->prepararPlanilla($req);
         $frontend = rtrim(config('app.frontend_url', 'http://localhost:5173'), '/');
 
+        // localhost y 127.0.0.1 son origenes distintos para el navegador: si el SPA
+        // se abrio con el alias que no esta en FRONTEND_URL, el frame se bloquea y
+        // la planilla queda en blanco. Se permiten ambos solo en desarrollo.
+        $ancestors = [$frontend];
+        foreach (['localhost', '127.0.0.1'] as $h) {
+            if (str_contains($frontend, '://' . $h . ':')) {
+                $alias = $h === 'localhost' ? '127.0.0.1' : 'localhost';
+                $ancestors[] = str_replace('://' . $h . ':', '://' . $alias . ':', $frontend);
+            }
+        }
+        $ancestors = implode(' ', array_values(array_unique($ancestors)));
+
         return response()
             ->view('calificaciones.planilla', [
                 'materia'  => $datos['materia'],
@@ -1443,7 +1445,7 @@ class AlumnoCalificacionesController extends Controller
                 'ventanaP1' => $datos['ventanaP1'],
                 'ventanaP2' => $datos['ventanaP2'],
             ])
-            ->header('Content-Security-Policy', "frame-ancestors 'self' {$frontend}")
+            ->header('Content-Security-Policy', "frame-ancestors 'self' {$ancestors}")
             ->header('Referrer-Policy', 'no-referrer');
     }
 
@@ -1554,10 +1556,10 @@ class AlumnoCalificacionesController extends Controller
             'ciclo'             => ['required','integer','min:2000'],
             'alumnos'           => ['required','array'],
             'alumnos.*.alumno_id'     => ['required','integer','min:1'],
-            'alumnos.*.p1_vp'        => ['nullable','array'],
+            'alumnos.*.p1_vp'        => ['nullable','array','max:' . AlumnoCalificacion::MAX_PARCIALES],
             'alumnos.*.p1_vp.*'      => ['nullable','string','max:10'],
             'alumnos.*.p1_preliminar' => ['nullable','string','in:TEA,TEP,TED'],
-            'alumnos.*.p2_vp'        => ['nullable','array'],
+            'alumnos.*.p2_vp'        => ['nullable','array','max:' . AlumnoCalificacion::MAX_PARCIALES],
             'alumnos.*.p2_vp.*'      => ['nullable','string','max:10'],
             'alumnos.*.p2_preliminar' => ['nullable','string','in:TEA,TEP,TED'],
             'alumnos.*.p1_final_cuatri' => ['nullable','numeric','min:1','max:10'],
@@ -1566,6 +1568,9 @@ class AlumnoCalificacionesController extends Controller
             'alumnos.*.int_dic'     => ['nullable','numeric'],
             'alumnos.*.int_feb'     => ['nullable','numeric'],
             'alumnos.*.int_mar_abr' => ['nullable','numeric'],
+        ], [
+            'alumnos.*.p1_vp.max' => 'El 1er cuatrimestre tiene como máximo ' . AlumnoCalificacion::MAX_PARCIALES . ' notas parciales.',
+            'alumnos.*.p2_vp.max' => 'El 2do cuatrimestre tiene como máximo ' . AlumnoCalificacion::MAX_PARCIALES . ' notas parciales.',
         ]);
 
         $anio     = (int)$data['anio'];
@@ -1573,10 +1578,8 @@ class AlumnoCalificacionesController extends Controller
         $materiaId = (int)$data['materia_id'];
         $ciclo    = (int)$data['ciclo'];
 
-        // Autorización por ámbito: admin/directivo/jefe_preceptores o usuario asignado al curso.
-        if (!$this->userCanWriteAll($req) && !$this->userIsAssignedTo($req, $anio, $division)) {
-            abort(403, 'No tenés permiso para modificar la planilla de este curso.');
-        }
+        // Autorización por alcance: según el mapa de escritura del rol sobre calificaciones.
+        $this->assertPuedeEditarCurso($req, $anio, $division, 'calificaciones');
         // Y además por materia: el profesor solo edita la planilla de las suyas.
         if ($msgAlcance = $this->mensajeAlcanceMateria($req, [
             'anio' => $anio, 'division' => $division, 'materia_id' => $materiaId,

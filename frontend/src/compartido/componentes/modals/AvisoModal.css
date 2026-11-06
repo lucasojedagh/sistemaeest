@@ -252,6 +252,13 @@
   font-size: 13px;
   font-weight: 600;
   max-width: min(90vw, 380px);
+  animation: aviso-toast-in 220ms ease-out backwards;
+}
+
+/* Entrada por CSS: con Framer en la salida quedaba un frame opaco antes de desmontar. */
+@keyframes aviso-toast-in {
+  from { opacity: 0; transform: translateY(-14px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
 }
 
 .aviso-toast-icon {

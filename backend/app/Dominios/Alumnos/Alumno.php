@@ -26,6 +26,7 @@ class Alumno extends Model
         'nacionalidad',
         'dni',
         'matricula',           // Nro. de matrícula del instituto
+        'email',               // Correo electrónico del alumno
         'fecha_nacimiento',
         'anio',
         'division',

@@ -2,7 +2,8 @@
 // FILE: src/components/Alumnos/DropdownFiltroGenero.jsx
 // ===============================
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
 import "./DropdownFiltroGenero.css";
 
 /*
@@ -39,6 +40,7 @@ const DropdownFiltroGenero = ({
   className = ''
 }) => {
   const [open, setOpen] = useState(false);
+  const { montado, cerrando } = useCierreAnimado(open, 150);
   const ref = useRef();
 
   useEffect(() => {
@@ -81,14 +83,9 @@ const DropdownFiltroGenero = ({
         </motion.span>
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ y: -10 }}
-            animate={{ y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="dropdown-genero-panel"
+      {montado && (
+          <div
+            className={`dropdown-genero-panel sys-desplegable${cerrando ? " sys-cerrando" : ""}`}
           >
             <div>
               <div
@@ -111,9 +108,9 @@ const DropdownFiltroGenero = ({
                 );
               })}
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      
     </div>
   );
 };

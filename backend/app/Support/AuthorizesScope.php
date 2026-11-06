@@ -1,133 +1,155 @@
 <?php
 
-// Trait de autorizacion por ambito. Verifica permisos segun el rol del usuario y su asignacion a cursos.
+// Trait de autorizacion por ambito. Dos filtros en serie: el permiso (Permisos,
+// "esta accion esta habilitada?") y el alcance (Alcances, "sobre que datos?").
+// Ambos se pueden configurar por rol en la pantalla "Roles y permisos"; sin
+// configuracion guardada cada rol usa su defecto, que reproduce el
+// comportamiento historico del sistema.
 
 namespace App\Support;
 
 use App\Dominios\Alumnos\Alumno;
-use App\Support\RoleHierarchy;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 trait AuthorizesScope
 {
-    // Verifica si el usuario tiene permisos globales de escritura (admin, directivo, jefe de preceptores).
-    protected function userCanWriteAll(Request $request): bool
+    /** Cursos de la ficha profesional, memorizados por usuario dentro del request. */
+    private array $fichaProfesoralMemo = [];
+
+    protected function rolDe(Request $request): string
     {
-        return in_array($request->user()->role, [
-            RoleHierarchy::ADMIN,
-            RoleHierarchy::DIRECTIVO,
-            RoleHierarchy::JEFE_PRECEPTORES,
-        ], true);
+        return (string) $request->user()->role;
     }
 
-    // Verifica si el usuario tiene permiso para calificar (incluye profesor, preceptor y prosecretaria).
-    protected function userCanGrade(Request $request): bool
+    /** Alcance de lectura del rol sobre un area ('todos' | 'asignados' | 'ninguno'). */
+    protected function alcanceVer(Request $request, string $area): string
     {
-        return in_array($request->user()->role, [
-            RoleHierarchy::ADMIN,
-            RoleHierarchy::DIRECTIVO,
-            RoleHierarchy::JEFE_PRECEPTORES,
-            RoleHierarchy::PROFESOR,
-            RoleHierarchy::PRECEPTOR,
-            RoleHierarchy::PROSECRETARIA,
-        ], true);
+        return Alcances::ver($this->rolDe($request), $area);
     }
 
-    // Verifica si el usuario es admin o directivo.
-    protected function userIsAdminOrDirectivo(Request $request): bool
+    /** Alcance de escritura del rol sobre un area. */
+    protected function alcanceEditar(Request $request, string $area): string
     {
-        return in_array($request->user()->role, [
-            RoleHierarchy::ADMIN,
-            RoleHierarchy::DIRECTIVO,
-        ], true);
+        return Alcances::editar($this->rolDe($request), $area);
     }
 
-    // Verifica si el usuario tiene permiso de lectura global (todos los roles autenticados).
-    protected function userCanReadAll(Request $request): bool
+    /** El rol ve TODOS los datos del area, sin recortar por curso. */
+    protected function veTodo(Request $request, string $area): bool
     {
-        return RoleHierarchy::level($request->user()->role) >= RoleHierarchy::level(RoleHierarchy::PROFESOR);
+        return $this->alcanceVer($request, $area) === Alcances::TODO;
     }
 
-    // Verifica si el usuario esta asignado al anio/division especificado segun sus asignaciones.
-    protected function userIsAssignedTo(Request $request, int $anio, ?string $division): bool
+    /** El rol puede modificar TODOS los datos del area. */
+    protected function editaTodo(Request $request, string $area): bool
     {
-        $role = $request->user()->role;
-        // Roles superiores tienen acceso global sin restriccion de ambito.
-        if (in_array($role, [
-            RoleHierarchy::ADMIN,
-            RoleHierarchy::DIRECTIVO,
-            RoleHierarchy::JEFE_PRECEPTORES,
-        ], true)) {
-            return true;
+        return $this->alcanceEditar($request, $area) === Alcances::TODO;
+    }
+
+    /** El rol tiene acceso de lectura al area, aunque sea solo a lo suyo. */
+    protected function puedeVer(Request $request, string $area): bool
+    {
+        return $this->alcanceVer($request, $area) !== Alcances::NADA;
+    }
+
+    /** El rol tiene acceso de escritura al area, aunque sea solo a lo suyo. */
+    protected function puedeEditar(Request $request, string $area): bool
+    {
+        return $this->alcanceEditar($request, $area) !== Alcances::NADA;
+    }
+
+    /**
+     * 403 si el rol no puede LEER los datos de ese curso.
+     * 'todos' pasa siempre; 'asignados' exige pertenecer al curso; 'ninguno' bloquea.
+     */
+    protected function assertPuedeVerCurso(Request $request, $anio, ?string $division, string $area): void
+    {
+        switch ($this->alcanceVer($request, $area)) {
+            case Alcances::TODO:
+                return;
+            case Alcances::ASIGNADO:
+                if ($this->userIsAssignedTo($request, (int) $anio, $division)) return;
+                break;
         }
 
-        // Profesor: los cursos de su ficha (profesor_asignaciones, vinculado por
-        // email con la tabla profesores) tambien habilitan acceso, aunque no tenga
-        // asignacion a nivel usuario. Lo mismo vale para los cursos que cubre
-        // como suplente de otro profesor.
-        if ($role === RoleHierarchy::PROFESOR) {
-            $profesor = \App\Dominios\Profesores\Profesor::where('email', $request->user()->email)->first();
-            if ($profesor && \App\Dominios\Profesores\ProfesorAsignacion::where('profesor_id', $profesor->id)
-                ->where('anio', $anio)
-                ->where(function ($q) use ($division) {
-                    $q->where('division', $division)->orWhereNull('division');
-                })
-                ->exists()) {
-                return true;
-            }
-            if ($profesor && \App\Support\Suplencias::cubreCurso($profesor->id, $anio, $division)) {
-                return true;
-            }
-        }
-
-        return $request->user()->anioDivisiones()
-            ->where('anio', $anio)
-            ->where(function ($q) use ($division) {
-                $q->where('division', $division)->orWhereNull('division');
-            })
-            ->exists();
+        abort(403, 'No tenés permiso para ver este recurso.');
     }
 
-    // Lanza 403 si el usuario no tiene permiso para modificar los datos del alumno.
-    protected function assertCanWriteAlumno(Request $request, Alumno $alumno): void
+    /** 403 si el rol no puede MODIFICAR los datos de ese curso. */
+    protected function assertPuedeEditarCurso(Request $request, $anio, ?string $division, string $area): void
     {
-        // Usuarios con permisos globales pueden escribir en cualquier alumno.
-        if ($this->userCanWriteAll($request)) return;
-
-        $role = $request->user()->role;
-
-        // Preceptor y prosecretaria pueden escribir si están asignados al curso del alumno.
-        if (in_array($role, ['preceptor', 'prosecretaria'], true) && $this->userIsAssignedTo($request, $alumno->anio, $alumno->division)) return;
+        switch ($this->alcanceEditar($request, $area)) {
+            case Alcances::TODO:
+                return;
+            case Alcances::ASIGNADO:
+                if ($this->userIsAssignedTo($request, (int) $anio, $division)) return;
+                break;
+        }
 
         abort(403, 'No tenés permiso para modificar este recurso.');
     }
 
-    // Lanza 403 si el usuario no tiene permiso para calificar al alumno en su curso.
-    // Con $materiaId, además exige que la materia esté dentro de las asignaciones
-    // del profesor para ese curso.
-    protected function assertCanGradeAlumno(Request $request, Alumno $alumno, ?int $materiaId = null): void
+    /** Lanza 403 si el usuario no puede ver los datos de ese curso. */
+    protected function assertCanReadCurso(Request $request, $anio, ?string $division, string $area = 'alumnos'): void
     {
-        if ($this->userCanGrade($request)
-            && $this->userIsAssignedTo($request, $alumno->anio, $alumno->division)
-            && $this->materiaDentroDeAsignaciones($request, (int) $alumno->anio, $alumno->division, $materiaId)) return;
-
-        abort(403, 'No tenés permiso para cargar notas en este curso.');
+        $this->assertPuedeVerCurso($request, $anio, $division, $area);
     }
 
-    // ¿Puede este usuario escribir notas de ESA materia en ESE curso?
-    // Solo restringe al profesor cuya ficha ya tiene asignaciones cargadas para
-    // ese curso: sin ficha o sin asignaciones en el curso se conserva el alcance
-    // por curso de siempre, porque bloquear a los docentes todavía no dados de
-    // alta en profesor_asignaciones dejaría el sistema sin carga de notas.
+    /** Lanza 403 si el usuario no puede modificar los datos de ese curso. */
+    protected function assertCanWriteDivision(Request $request, int $anio, ?string $division, string $area = 'cursos'): void
+    {
+        $this->assertPuedeEditarCurso($request, $anio, $division, $area);
+    }
+
+    /** Lanza 403 si el usuario no tiene permiso para modificar los datos del alumno. */
+    protected function assertCanWriteAlumno(Request $request, Alumno $alumno): void
+    {
+        $this->assertPuedeEditarCurso($request, $alumno->anio, $alumno->division, 'alumnos');
+    }
+
+    /** Permiso de carga de notas, según el rango del rol o su fila en roles_config. */
+    protected function userCanGrade(Request $request): bool
+    {
+        return Permisos::puede($this->rolDe($request), 'calificaciones.editar');
+    }
+
+    /**
+     * Lanza 403 si el usuario no tiene permiso para calificar al alumno en su curso.
+     * Con $materiaId, además exige que la materia esté dentro de las asignaciones
+     * del profesor para ese curso.
+     */
+    protected function assertCanGradeAlumno(Request $request, Alumno $alumno, ?int $materiaId = null): void
+    {
+        if (!$this->userCanGrade($request)) {
+            abort(403, 'No tenés permiso para cargar notas.');
+        }
+
+        $this->assertPuedeEditarCurso($request, $alumno->anio, $alumno->division, 'calificaciones');
+
+        if (!$this->materiaDentroDeAsignaciones($request, (int) $alumno->anio, $alumno->division, $materiaId)) {
+            abort(403, 'No tenés permiso para cargar notas en este curso.');
+        }
+    }
+
+    /**
+     * ¿Puede este usuario escribir notas de ESA materia en ESE curso?
+     * Solo restringe al alcance "solo los asignados": un rol que ve todos los
+     * cursos tampoco está atado a las materias de su ficha. Y si la ficha todavía
+     * no tiene asignaciones cargadas para ese curso se conserva el alcance por
+     * curso de siempre, porque bloquear a los docentes aún no dados de alta en
+     * profesor_asignaciones dejaría el sistema sin carga de notas.
+     * Cuando la ficha sí tiene datos pero le falta esa materia, alcanzan la
+     * suplencia vigente o la materia dictada en el horario del curso.
+     */
     protected function materiaDentroDeAsignaciones(Request $request, int $anio, ?string $division, ?int $materiaId): bool
     {
         if ($materiaId === null) return true;
-        if ($request->user()->role !== RoleHierarchy::PROFESOR) return true;
+        if ($this->alcanceVer($request, 'calificaciones') !== Alcances::ASIGNADO) return true;
 
         $profesor = \App\Dominios\Profesores\Profesor::where('email', $request->user()->email)->first();
         if (!$profesor) return true;
 
-        $div = $division !== null && $division !== '' ? strtoupper(trim($division)) : null;
+        $div = $this->normalizarDivision($division);
 
         // ProfesorAsignacion no usa SoftDeletes, así que hay que filtrar a mano.
         $materias = \App\Dominios\Profesores\ProfesorAsignacion::where('profesor_id', $profesor->id)
@@ -142,57 +164,89 @@ trait AuthorizesScope
         if ($materias->contains($materiaId)) return true;
 
         // Las materias que cubre como suplente también son de su alcance.
-        return \App\Support\Suplencias::cubreMateria($profesor->id, $materiaId, $anio, $div);
+        if (\App\Support\Suplencias::cubreMateria($profesor->id, $materiaId, $anio, $div)) return true;
+
+        // Y las que dicta de hecho: si la materia está en el horario del curso
+        // con este docente en alguna franja, la ficha de asignaciones quedó
+        // incompleta pero el vínculo es real. Sin este paso, un horario cargado
+        // a mano (o una ficha que no se actualizó) deja al profesor afuera de su
+        // propia planilla con un 403 y sin ninguna manera de ver por qué.
+        return DB::table('horario_celdas')
+            ->join('cursos', 'cursos.id', '=', 'horario_celdas.curso_id')
+            ->where('cursos.anio', $anio)
+            ->when($div !== null, fn ($q) => $q->where('cursos.division', $div))
+            ->where('horario_celdas.materia_id', $materiaId)
+            ->where('horario_celdas.profesor_id', $profesor->id)
+            ->exists();
     }
 
-    // Lanza 403 si el usuario no tiene permiso para modificar datos del curso especificado.
-    protected function assertCanWriteDivision(Request $request, int $anio, ?string $division): void
+    /**
+     * ¿El usuario pertenece a ese curso? Une las asignaciones de la cuenta
+     * (user_anio_division) con los cursos de su ficha de profesor y las
+     * suplencias vigentes. El rango del rol ya no interviene: lo que decide si el
+     * rango alcanza es el mapa de Alcances.
+     */
+    protected function userIsAssignedTo(Request $request, int $anio, ?string $division): bool
     {
-        if ($this->userCanWriteAll($request)) return;
+        $div = $this->normalizarDivision($division);
 
-        $role = $request->user()->role;
+        $asignada = $request->user()->anioDivisiones()
+            ->where('anio', $anio)
+            ->where(function ($q) use ($div) {
+                $q->where('division', $div)->orWhereNull('division');
+            })
+            ->exists();
+        if ($asignada) return true;
 
-        if (in_array($role, ['preceptor', 'prosecretaria'], true) && $this->userIsAssignedTo($request, $anio, $division)) return;
+        foreach ($this->cursosDeFichaProfesoral($request) as $curso) {
+            if ($curso['anio'] !== $anio) continue;
+            if ($curso['division'] === null || $curso['division'] === $div) return true;
+        }
 
-        abort(403, 'No tenés permiso para modificar este curso.');
+        return false;
     }
 
-    // Lanza 403 si el usuario no tiene permiso para LEER datos del curso especificado.
-    // A diferencia de la escritura, el profesor también puede leer su ámbito asignado.
-    // sin_rol (nivel 0) nunca pasa: recibe 403.
-    protected function assertCanReadCurso(Request $request, $anio, ?string $division): void
+    /**
+     * Cursos de la ficha profesional (tabla profesores, vinculada por email con la
+     * cuenta) más los que cubre como suplente. Se calcula una sola vez por
+     * usuario y request.
+     */
+    protected function cursosDeFichaProfesoral(Request $request): array
     {
-        if ($this->userCanWriteAll($request)) return;
+        $userId = (int) $request->user()->id;
+        if (array_key_exists($userId, $this->fichaProfesoralMemo)) {
+            return $this->fichaProfesoralMemo[$userId];
+        }
 
-        $role = $request->user()->role;
+        $out = [];
+        $profesor = \App\Dominios\Profesores\Profesor::where('email', $request->user()->email)->first();
+        if ($profesor) {
+            foreach (\App\Dominios\Profesores\ProfesorAsignacion::where('profesor_id', $profesor->id)
+                         ->whereNull('deleted_at')
+                         ->get(['anio', 'division']) as $r) {
+                $out[] = ['anio' => (int) $r->anio, 'division' => $this->normalizarDivision($r->division)];
+            }
+            foreach (\App\Support\Suplencias::coberturasDe($profesor->id) as $c) {
+                $out[] = ['anio' => (int) $c['anio'], 'division' => $this->normalizarDivision($c['division'])];
+            }
+        }
 
-        if (in_array($role, [RoleHierarchy::PROFESOR, RoleHierarchy::PRECEPTOR, RoleHierarchy::PROSECRETARIA], true)
-            && $this->userIsAssignedTo($request, (int) $anio, $division)) return;
-
-        abort(403, 'No tenés permiso para ver este recurso.');
+        return $this->fichaProfesoralMemo[$userId] = $out;
     }
 
-    // Pares (anio, division) asignados al usuario, uniendo user_anio_division
-    // y (para profesor) la ficha profesional profesor_asignaciones.
-    // division null = todo el año. Devuelve lista dedupicada.
+    /**
+     * Pares (anio, division) asignados al usuario, uniendo user_anio_division y
+     * la ficha profesional. division null = todo el año. Devuelve lista dedupicada.
+     */
     protected function assignedPairs(Request $request): array
     {
         $pairs = [];
         foreach ($request->user()->anioDivisiones()->get(['anio', 'division']) as $r) {
-            $pairs[] = ['anio' => (int) $r->anio, 'division' => $r->division];
+            $pairs[] = ['anio' => (int) $r->anio, 'division' => $this->normalizarDivision($r->division)];
         }
 
-        if ($request->user()->role === RoleHierarchy::PROFESOR) {
-            $profesor = \App\Dominios\Profesores\Profesor::where('email', $request->user()->email)->first();
-            if ($profesor) {
-                foreach (\App\Dominios\Profesores\ProfesorAsignacion::where('profesor_id', $profesor->id)->get(['anio', 'division']) as $r) {
-                    $pairs[] = ['anio' => (int) $r->anio, 'division' => $r->division];
-                }
-                // Cursos que cubre como suplente: también son su ámbito.
-                foreach (\App\Support\Suplencias::coberturasDe($profesor->id) as $c) {
-                    $pairs[] = ['anio' => $c['anio'], 'division' => $c['division']];
-                }
-            }
+        foreach ($this->cursosDeFichaProfesoral($request) as $curso) {
+            $pairs[] = $curso;
         }
 
         $uniq = [];
@@ -203,40 +257,19 @@ trait AuthorizesScope
         return array_values($uniq);
     }
 
-    // Ficha completa (datos personales: DNI, estado, observaciones) solo para
-    // gestión: admin, directivo y jefe de preceptores. Rangos bajos solo
-    // reciben contacto (nombre/email) y cursos asignados.
-    protected function userCanSeeFullFicha(Request $request): bool
+    private function normalizarDivision(?string $division): ?string
     {
-        return in_array($request->user()->role, [
-            RoleHierarchy::ADMIN,
-            RoleHierarchy::DIRECTIVO,
-            RoleHierarchy::JEFE_PRECEPTORES,
-        ], true);
+        if ($division === null) return null;
+        $div = strtoupper(trim($division));
+        return $div === '' ? null : $div;
     }
 
-    // Exige confirmación de contraseña reciente (server-side, 5 min) para
-    // acciones destructivas. Se otorga en POST /auth/confirm-password.
-    protected function assertPasswordConfirmed(Request $request): void
+    /**
+     * Restringe un query a los pares (anio, division) del usuario. Un par con
+     * division null abre todo el año.
+     */
+    private function filtrarPorPares($query, array $pairs): void
     {
-        $confirmed = \Illuminate\Support\Facades\Cache::get('pwdconfirm_' . $request->user()->id);
-        if (!$confirmed) {
-            abort(422, 'Confirmá tu contraseña para realizar esta acción.');
-        }
-    }
-
-    // Restringe un query de alumnos al ámbito del usuario.
-    // admin/directivo/jefe_preceptores: sin restricción. profesor/preceptor:
-    // solo sus cursos asignados (vacío si no tiene). sin_rol: 403.
-    protected function scopeAlumnoIndex(Request $request, $query): void
-    {
-        if ($this->userCanWriteAll($request)) return;
-
-        if (!$this->userCanReadAll($request)) {
-            abort(403, 'No tenés permiso para ver el padrón de alumnos.');
-        }
-
-        $pairs = $this->assignedPairs($request);
         if (!$pairs) {
             $query->whereRaw('1 = 0');
             return;
@@ -252,5 +285,58 @@ trait AuthorizesScope
                 });
             }
         });
+    }
+
+    /**
+     * Restringe un query de alumnos al alcance del rol para esa area: 'todos' no
+     * filtra, 'ninguno' devuelve 403 y 'asignados' deja solo sus cursos.
+     */
+    protected function scopeAlumnoIndex(Request $request, $query, string $area = 'alumnos'): void
+    {
+        $alcance = $this->alcanceVer($request, $area);
+
+        if ($alcance === Alcances::TODO) return;
+
+        if ($alcance === Alcances::NADA) {
+            abort(403, 'No tenés permiso para ver el padrón de alumnos.');
+        }
+
+        $this->filtrarPorPares($query, $this->assignedPairs($request));
+    }
+
+    /** Restringe un query de cursos/horarios al alcance del rol para esa area. */
+    protected function scopeCursoIndex(Request $request, $query, string $area = 'cursos'): void
+    {
+        $alcance = $this->alcanceVer($request, $area);
+
+        if ($alcance === Alcances::TODO) return;
+
+        if ($alcance === Alcances::NADA) {
+            abort(403, 'No tenés permiso para ver los cursos.');
+        }
+
+        $this->filtrarPorPares($query, $this->assignedPairs($request));
+    }
+
+    /**
+     * Ficha completa (datos personales: DNI, estado, observaciones) solo para
+     * quien tenga el permiso de datos personales. Los rangos bajos reciben
+     * contacto (nombre/email) y cursos asignados.
+     */
+    protected function userCanSeeFullFicha(Request $request): bool
+    {
+        return Permisos::puede($this->rolDe($request), 'ficha.datos_personales');
+    }
+
+    /**
+     * Exige confirmación de contraseña reciente (server-side, 5 min) para
+     * acciones destructivas. Se otorga en POST /auth/confirm-password.
+     */
+    protected function assertPasswordConfirmed(Request $request): void
+    {
+        $confirmed = \Illuminate\Support\Facades\Cache::get('pwdconfirm_' . $request->user()->id);
+        if (!$confirmed) {
+            abort(422, 'Confirmá tu contraseña para realizar esta acción.');
+        }
     }
 }

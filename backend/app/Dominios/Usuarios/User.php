@@ -61,7 +61,30 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'last_login_at'     => 'datetime',  // último acceso
         'password'          => 'hashed',
+        'debe_cambiar_password' => 'boolean',
     ];
+
+    /**
+     * La version de la foto viaja en toda respuesta que serialice un usuario:
+     * es la clave con la que el front guarda y pide la imagen, así una foto
+     * nueva reemplaza a la vieja en pantalla sin recargar nada.
+     */
+    protected $appends = ['avatar_version'];
+
+    /**
+     * Numero del archivo (milisegundos de la subida) guardado en
+     * avatars/{id}/{version}.webp. Null si la cuenta no tiene foto.
+     */
+    public function getAvatarVersionAttribute(): ?int
+    {
+        $ruta = $this->attributes['avatar'] ?? null;
+        if (!$ruta) {
+            return null;
+        }
+
+        $version = (int) basename((string) $ruta);
+        return $version > 0 ? $version : null;
+    }
 
     /** Relacion: anios y divisiones a las que el usuario tiene acceso */
     public function anioDivisiones()

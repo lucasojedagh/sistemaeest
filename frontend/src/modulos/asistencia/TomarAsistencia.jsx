@@ -7,14 +7,11 @@ import {
   CalendarCheck, CalendarDays, CheckCircle2, ClipboardList, Clock,
   Download, Loader, Printer, Save, Search, AlertCircle,
 } from "lucide-react";
-import { exportCSV } from "../../compartido/lib/export";
-import { mensajeDescarga } from "../../compartido/lib/descarga";
 import { asistenciaApi } from "../../compartido/api/asistencia";
-import { ESTADOS_ASISTENCIA, ESTADO_LABELS, fmtPct, cursoLabel, hoyLocal } from "../../compartido/lib/asistencia";
+import { ESTADOS_ASISTENCIA, ESTADO_LABELS, fmtPct, cursoLabel, hoyLocal, esCursoEditable } from "../../compartido/lib/asistencia";
 import { coincideBusqueda, coincideDni } from "../../compartido/lib/busqueda";
+import { mensajeAmable } from "../../compartido/lib/errores";
 import CoursePicker from "./CoursePicker";
-import { imprimirUrl, pedirTicketImpresion } from "../../compartido/lib/imprimir";
-import { BACKEND_BASE } from "../../compartido/lib/api";
 import EmptyState from "../../compartido/componentes/Common/EmptyState";
 import useConfirmAction from "../../compartido/hooks/useConfirmAction";
 import { useDeshacerAviso } from "../../compartido/lib/deshacer.jsx";
@@ -66,6 +63,11 @@ export default function TomarAsistencia({ maps, initial, onSaved }) {
   const [info, setInfo] = useState(null);
   const [filtroAlumno, setFiltroAlumno] = useState("");
 
+  // El backend manda "editables" solo cuando la escritura es por curso asignado;
+  // lista vacía significa que la cuenta no puede marcar ninguna asistencia.
+  const sinEditables =
+    Array.isArray(maps?.editables) && maps.editables.length === 0;
+
   const [confirmAction, confirmModal] = useConfirmAction();
   const [mostrarAviso, pedirConfirmacion, avisoModal] = useAviso();
   const showToast = useToast();
@@ -95,6 +97,18 @@ export default function TomarAsistencia({ maps, initial, onSaved }) {
 
   const cursoOk = Boolean(curso.anio && curso.division && curso.division !== "*");
   const suspendida = estadoClase === "suspendida";
+  // Un curso se puede llegar a ver sin estar asignado (el preceptor ve todos);
+  // en ese caso la lista se muestra pero el guardado queda bloqueado.
+  const puedeMarcar = esCursoEditable(maps?.editables, curso.anio, curso.division);
+
+  // Aviso cuando la clase tiene marcas de alumnos que ya no están en el curso
+  // (promovidos o cambiados de división): la planilla se arma con los actuales.
+  const notaFueraDeCurso = (detalle) => {
+    const fuera = detalle?.marcas_fuera || [];
+    if (fuera.length === 0) return "";
+    const ejemplos = fuera.slice(0, 3).map((m) => `${m.nombre} (${m.curso_actual})`).join(", ");
+    return ` Además hay ${fuera.length} marca${fuera.length === 1 ? "" : "s"} de alumnos que hoy están en otro curso: ${ejemplos}${fuera.length > 3 ? "…" : ""}.`;
+  };
 
   async function cargarClaseExistente(cur, f) {
     // Los datos de la clase arrancan limpios en cada fecha. Si hay una clase
@@ -117,7 +131,7 @@ export default function TomarAsistencia({ maps, initial, onSaved }) {
     if (detalle.alumnos?.length) fijarBase(detalle.alumnos.map(aFila));
     setInfo({
       type: "info",
-      text: `Esta clase del ${fmtFechaBonita(c.fecha)} ya estaba cargada. Podés cambiarla y volver a guardar.`,
+      text: `Esta clase del ${fmtFechaBonita(c.fecha)} ya estaba cargada. Podés cambiarla y volver a guardar.${notaFueraDeCurso(detalle)}`,
     });
     return true;
   }
@@ -158,11 +172,16 @@ export default function TomarAsistencia({ maps, initial, onSaved }) {
     if (initialAplicado.current === firma) return;
     initialAplicado.current = firma;
     let cancelado = false;
-    if (initial.clase_id) {
-      asistenciaApi.clase(initial.clase_id).then((detalle) => {
+    // La pestaña Clases manda { clase: id } o { curso: {anio, division}, fecha };
+    // se aceptan también las formas sueltas por si llega de la URL.
+    const clasePedido = initial.clase_id ?? initial.clase;
+    if (clasePedido) {
+      asistenciaApi.clase(clasePedido).then((detalle) => {
         if (cancelado) return;
         const c = detalle.clase || {};
-        setCurso({ anio: c.anio, division: c.division });
+        // El detalle trae el curso anidado ("curso": {anio, division}), no suelto.
+        const cur = c.curso || {};
+        setCurso({ anio: String(cur.anio ?? c.anio ?? ""), division: String(cur.division ?? c.division ?? "") });
         setFecha(c.fecha || hoy());
         setHoraInicio(hhmm(c.hora_inicio));
         setHoraFin(hhmm(c.hora_fin));
@@ -170,13 +189,24 @@ export default function TomarAsistencia({ maps, initial, onSaved }) {
         setComentario(c.comentario || "");
         setClaseId(c.id);
         fijarBase((detalle.alumnos || []).map(aFila));
-        setInfo({ type: "info", text: `Estás editando la clase N.°${c.numero_clase} del ${fmtFechaBonita(c.fecha)}.` });
-      }).catch(() => {});
-    } else if (initial.anio && initial.division) {
-      setCurso({ anio: initial.anio, division: initial.division });
-      if (initial.fecha) setFecha(initial.fecha);
+        setInfo({ type: "info", text: `Estás editando la clase N.°${c.numero_clase} del ${fmtFechaBonita(c.fecha)}.${notaFueraDeCurso(detalle)}` });
+      }).catch((e) => {
+        if (cancelado) return;
+        mostrarAviso({
+          icon: "error",
+          title: "No se pudo abrir esta clase",
+          text: mensajeAmable(e, "Revisá tu conexión e intentá de nuevo."),
+        });
+      });
+    } else {
+      const cur = initial.curso || initial;
+      if (cur.anio && cur.division) {
+        setCurso({ anio: String(cur.anio), division: String(cur.division) });
+        if (initial.fecha) setFecha(initial.fecha);
+      }
     }
     return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
 
   const setEstadoAlumno = (alumno_id, estado) =>
@@ -200,27 +230,6 @@ export default function TomarAsistencia({ maps, initial, onSaved }) {
   const todoElegido = resumen.sinElegir === 0 && resumen.total > 0;
   const faltaUno = resumen.sinElegir === 1;
   const progresoPct = resumen.total ? Math.round((resumen.elegidos / resumen.total) * 100) : 0;
-
-  async function imprimirPlanilla() {
-    const ticket = await pedirTicketImpresion();
-    if (!ticket) { showToast("No se pudo autorizar la impresión. Probá de nuevo.", "error"); return; }
-    const params = new URLSearchParams({ clase_id: String(claseId), ticket });
-    await imprimirUrl(`${BACKEND_BASE}/print/asistencia?${params.toString()}`);
-  }
-
-  function descargarCSV() {
-    if (!rows.length) { showToast("Todavía no hay alumnos en la lista.", "info"); return; }
-    const filas = rows.map((r) => ({
-      Apellido: r.apellido || "",
-      Nombre: r.nombre || "",
-      DNI: r.dni || "",
-      Estado: ESTADO_LABELS[r.estado] || "Sin elegir",
-      Anotacion: r.anotacion || "",
-    }));
-    const nombre = `lista-${curso.anio}-${curso.division}-${fecha}.csv`;
-    exportCSV(filas, nombre);
-    showToast(mensajeDescarga(nombre), "success");
-  }
 
   async function guardar(e) {
     e.preventDefault();
@@ -338,10 +347,14 @@ export default function TomarAsistencia({ maps, initial, onSaved }) {
         <EmptyState
           icon={CalendarCheck}
           title="Pasar lista"
-          description="Elegí el curso para empezar a marcar la asistencia."
+          description={
+            sinEditables
+              ? "Tu cuenta no tiene ningún curso asignado, así que no hay lista para marcar. Podés revisar las clases en la solapa \"Clases\"."
+              : "Elegí el curso para empezar a marcar la asistencia."
+          }
           action={
             <div className="pl-emptystate-action">
-              <CoursePicker maps={maps} value={curso} onChange={setCurso} />
+              <CoursePicker maps={maps} editables={maps?.editables ?? null} value={curso} onChange={setCurso} />
             </div>
           }
         />
@@ -358,7 +371,7 @@ export default function TomarAsistencia({ maps, initial, onSaved }) {
       <div className="pl-top">
         <div className="pl-top-curso">
           <label className="pl-label">Curso</label>
-          <CoursePicker maps={maps} value={curso} onChange={setCurso} />
+          <CoursePicker maps={maps} editables={maps?.editables ?? null} value={curso} onChange={setCurso} />
         </div>
         <div className="pl-top-fecha">
           <label className="pl-label">Fecha de la clase</label>
@@ -510,15 +523,16 @@ export default function TomarAsistencia({ maps, initial, onSaved }) {
           {/* ---------- Guardar ---------- */}
           <div className="pl-pie">
             <div className="pl-pie-info">
-              {claseId ? "Vas a modificar una clase ya cargada." : "Todavía no guardaste esta lista."}
+              {!puedeMarcar
+                ? "Este curso no está asignado a tu cuenta: podés ver la lista pero no guardarla."
+                : claseId ? "Vas a modificar una clase ya cargada." : "Todavía no guardaste esta lista."}
             </div>
             <div className="pl-pie-acciones">
-              
-              
               <button
                 type="button"
-                disabled={saving || busy || (!suspendida && !todoElegido)}
+                disabled={saving || busy || !puedeMarcar || (!suspendida && !todoElegido)}
                 onClick={guardar}
+                title={puedeMarcar ? undefined : "Tu cuenta no tiene asignado este curso."}
                 className="pl-btn-guardar"
               >
                 {saving ? <><Loader size={18} /> Guardando…</> : <><Save size={18} /> {claseId ? "Guardar cambios" : "Guardar lista"}</>}

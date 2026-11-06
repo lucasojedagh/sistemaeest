@@ -125,6 +125,10 @@ class AuthApiController extends Controller
                 'email'         => $user->email,
                 'role'          => $user->role,
                 'status'        => $user->status,
+                // Clave provisoria entregada en ventanilla: la app exige poner
+                // una propia antes de dejar usar el sistema.
+                'debe_cambiar_password' => (bool) $user->debe_cambiar_password,
+                'avatar_version' => $user->avatar_version,
                 'created_at'    => $user->created_at,
                 'updated_at'    => $user->updated_at,   // solo cambia cuando se edita el usuario
                 'last_login_at' => $user->last_login_at, // cambia en cada login
@@ -220,7 +224,18 @@ class AuthApiController extends Controller
             'apellido'      => $u->apellido,
             'email'         => $u->email,
             'role'          => $u->role,
+            'rol_nombre'    => \App\Support\RoleHierarchy::nombre($u->role),
+            'nivel'         => \App\Support\RoleHierarchy::level($u->role),
+            // null: rol de sistema sin quitarle permisos (el front no filtra nada).
+            // Array de claves: lista blanca de lo que puede hacer este rol.
+            'permisos'      => \App\Support\Permisos::efectivos($u->role),
+            // Alcance efectivo por área (ver/editar: todos | asignados | ninguno).
+            'alcance'       => \App\Support\Alcances::de($u->role),
+            // null: el rol no tiene módulos configurados, el menú usa el filtro histórico.
+            'modulos'       => \App\Support\Alcances::modulos($u->role),
             'status'        => $u->status,
+            'debe_cambiar_password' => (bool) $u->debe_cambiar_password,
+            'avatar_version' => $u->avatar_version,
             'created_at'    => $u->created_at,
             'updated_at'    => $u->updated_at,
             'last_login_at' => $u->last_login_at,
@@ -228,7 +243,8 @@ class AuthApiController extends Controller
     }
 
     // Devuelve el ambito de visibilidad del usuario segun su rol.
-    // Admin y jefe_preceptores ven todo (asignaciones = null); los demas ven solo sus anios y divisiones asignados.
+    // Un rol con alcance "todos" recibe asignaciones = null (sin restriccion);
+    // con "solo los asignados" recibe la lista de sus cursos.
     /** Ámbito de visibilidad del usuario según su rol */
     public function ambito(Request $r)
     {
@@ -237,13 +253,9 @@ class AuthApiController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        // admin, directivo y jefe_preceptores ven todo → null indica "sin restricción"
-        if (in_array($u->role, [
-            \App\Support\RoleHierarchy::ADMIN,
-            \App\Support\RoleHierarchy::DIRECTIVO,
-            \App\Support\RoleHierarchy::JEFE_PRECEPTORES,
-        ], true)) {
-            return ['role' => $u->role, 'asignaciones' => null];
+        // Alcance de lectura de alumnos: 'todos' → null indica "sin restricción".
+        if (\App\Support\Alcances::ver($u->role, 'alumnos') === \App\Support\Alcances::TODO) {
+            return ['role' => $u->role, 'asignaciones' => null, 'materias' => null];
         }
 
         $asignaciones = $u->anioDivisiones()
@@ -251,13 +263,12 @@ class AuthApiController extends Controller
             ->orderBy('division')
             ->get(['anio', 'division']);
 
-        // Para profesores: materias que efectivamente ensena (profesor_asignaciones,
-        // vinculado por email con su ficha). Usado por Calificaciones para mostrar
-        // solo las materias que dicta, no todas las del curso.
-        // Se suman las que cubre como suplente, marcadas para que la pantalla
-        // pueda distinguirlas ("suplente de ...").
+        // Materias que efectivamente enseña (profesor_asignaciones, vinculado por
+        // email con su ficha). Usado por Calificaciones para mostrar solo las
+        // materias que dicta, no todas las del curso. Se suman las que cubre como
+        // suplente, marcadas para que la pantalla pueda distinguirlas.
         $materiasEnsenadas = [];
-        if ($u->role === 'profesor') {
+        if (\App\Support\Alcances::ver($u->role, 'calificaciones') === \App\Support\Alcances::ASIGNADO) {
             $prof = \App\Dominios\Profesores\Profesor::where('email', $u->email)->first();
             if ($prof) {
                 $materiasEnsenadas = \App\Dominios\Profesores\ProfesorAsignacion::where('profesor_id', $prof->id)
@@ -352,6 +363,8 @@ class AuthApiController extends Controller
         $cambioPassword = !empty($data['password']);
         if ($cambioPassword) {
             $u->password = Hash::make($data['password']);
+            // Ya tiene una clave propia: no hay nada pendiente que bloquear.
+            $u->debe_cambiar_password = false;
         }
 
         $u->save(); // aquí sí queremos que updated_at cambie
@@ -384,6 +397,8 @@ class AuthApiController extends Controller
             'email'         => $u->email,
             'role'          => $u->role,
             'status'        => $u->status,
+            'debe_cambiar_password' => (bool) $u->debe_cambiar_password,
+            'avatar_version' => $u->avatar_version,
             'created_at'    => $u->created_at,
             'updated_at'    => $u->updated_at,
             'last_login_at' => $u->last_login_at,
@@ -417,16 +432,13 @@ class AuthApiController extends Controller
         return ['ok' => true];
     }
 
-    // Verifica la contrasena del usuario autenticado (solo admin o jefe_preceptores).
+    // Verifica la contrasena del usuario autenticado (los roles con nivel de
+    // jefe de preceptores o superior: admin, directivo, jefe y prosecretaria).
     // Devuelve un TTL de 5 minutos para que el frontend pueda realizar operaciones sensibles.
     public function confirmPassword(Request $r)
 {
     $u = $r->user();
-        if (!$u || !in_array($u->role, [
-            \App\Support\RoleHierarchy::ADMIN,
-            \App\Support\RoleHierarchy::DIRECTIVO,
-            \App\Support\RoleHierarchy::JEFE_PRECEPTORES,
-        ], true)) {
+        if (!$u || !\App\Support\RoleHierarchy::isAtLeast($u->role, \App\Support\RoleHierarchy::JEFE_PRECEPTORES)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 

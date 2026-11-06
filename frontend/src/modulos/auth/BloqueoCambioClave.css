@@ -1,0 +1,38 @@
+.bcc-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(17, 24, 39, 0.55);
+  animation: bcc-aparecer 0.2s ease-out;
+}
+
+.bcc-tarjeta {
+  width: 100%;
+  max-width: 420px;
+  padding: 22px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(17, 24, 39, 0.28);
+  animation: bcc-subir 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.bcc-cuenta {
+  margin: 0 0 12px;
+  font-size: 0.82rem;
+  color: var(--gray-500);
+  word-break: break-all;
+}
+
+@keyframes bcc-aparecer {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bcc-subir {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}

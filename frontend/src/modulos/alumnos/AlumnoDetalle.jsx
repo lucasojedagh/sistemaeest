@@ -559,6 +559,7 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
       dni: (alumno.dni || '').replace(/\D/g, '') || null,
       nacionalidad: (alumno.nacionalidad || '').trim() || null,
       matricula: (alumno.matricula || '').trim() || null,
+      email: (alumno.email || '').replace(/\s+/g, '') || null,
       fecha_nacimiento: alumno.fechaNacimiento || alumno.fecha_nacimiento || null,
       anio: anioNum,
       division,
@@ -634,6 +635,7 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
         dni: saved?.dni ?? alumno.dni,
         nacionalidad: saved?.nacionalidad ?? alumno.nacionalidad,
         matricula: saved?.matricula ?? alumno.matricula,
+        email: saved?.email ?? alumno.email,
         fecha_nacimiento: saved?.fecha_nacimiento ?? payload.fecha_nacimiento ?? null,
         fechaNacimiento : saved?.fecha_nacimiento ?? payload.fecha_nacimiento ?? null,
 
@@ -675,6 +677,7 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
                 dni: (o.dni || '').replace(/\D/g, '') || null,
                 nacionalidad: (o.nacionalidad || '').trim() || null,
                 matricula: (o.matricula || '').trim() || null,
+                email: (o.email || '').replace(/\s+/g, '') || null,
                 fecha_nacimiento: o.fecha_nacimiento || o.fechaNacimiento || null,
                 anio: antAnio.anioNum,
                 division: antAnio.division || o.curso?.division || null,
@@ -857,6 +860,7 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
     dni: String(a?.dni || '').replace(/\D/g, ''),
     nacionalidad: (a?.nacionalidad || '').trim(),
     matricula: (a?.matricula || '').trim(),
+    email: (a?.email || '').replace(/\s+/g, '').toLowerCase(),
     fecha: a?.fechaNacimiento || a?.fecha_nacimiento || '',
     anio: a?.anio || '',
     estado: a?.estado || 'Activo',
@@ -1061,6 +1065,18 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
                           placeholder="Número del registro de alumnos"
                           value={alumno?.matricula || ''}
                           onChange={(e) => setAlumno({ ...alumno, matricula: e.target.value })}
+                          className="alumno-detalle-input"
+                        />
+                      </div>
+
+                      <div className="alumno-detalle-field">
+                        <label htmlFor="al-correo" className={fieldLabel}>Correo electrónico</label>
+                        <input
+                          id="al-correo"
+                          type="email" maxLength={120}
+                          placeholder="Ej: alumno@correo.com"
+                          value={alumno?.email || ''}
+                          onChange={(e) => setAlumno({ ...alumno, email: e.target.value })}
                           className="alumno-detalle-input"
                         />
                       </div>
@@ -1530,7 +1546,7 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
                       onClick={async () => {
                         const ok = await pedirConfirmacion({
                           title: `¿Eliminar a ${alumno.apellido}, ${alumno.nombre}?`,
-                          text: 'Esta acción no se puede deshacer.',
+                          text: 'Se puede eliminar solo si todavía no tiene notas ni asistencia cargadas. Esta acción no se puede deshacer.',
                           danger: true,
                           confirmText: 'Sí, eliminar',
                           cancelText: 'Cancelar'
@@ -1547,7 +1563,13 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
                           eliminarAlumno(alumno.id);
                           cerrarConAnimacion();
                         } catch (e) {
-                          await mostrarAviso({ icon: 'error', title: 'No se pudo eliminar', text: mensajeAmable(e, 'No se pudo eliminar al alumno. Intentá de nuevo.') });
+                          // El bloqueo por histórico es un mensaje propio del
+                          // servidor: se muestra tal cual, con los datos que
+                          // impiden el borrado.
+                          const texto = e?.status === 422 && e?.data?.message
+                            ? e.data.message
+                            : mensajeAmable(e, 'No se pudo eliminar al alumno. Intentá de nuevo.');
+                          await mostrarAviso({ icon: 'error', title: 'No se pudo eliminar', text: texto });
                         }
                       }}
                       className="alumno-detalle-btn-delete"

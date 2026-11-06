@@ -5,3 +5,5 @@
    ============================================ */
 @import "./compartido/styles/variables.css";
 @import "./compartido/styles/base.css";
+@import "./compartido/styles/cierreModal.css";
+@import "./compartido/styles/entradaAnimada.css";

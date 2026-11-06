@@ -34,6 +34,11 @@ No hay una variable que saltee esa parte. Si partiste de BD vacía:
 docker compose exec backend php artisan db:seed --force
 ```
 
+> Esta es la guía de **desarrollo**. En el server de la institución ese comando
+> no va: deja mezclados los alumnos de muestra con los reales. Ahí se siembran
+> solamente `AdminUserSeeder` y `ParametroDivisionesSeeder`, y los alumnos
+> entran por la importación de la planilla — ver `DESPLEGUE-LINUX.md` §4.
+
 La clave inicial sale de `ADMIN_PASSWORD` (ver `backend/.env.example`).
 Si está vacía, el seeder genera una aleatoria y la muestra **una sola vez**
 en la salida del comando: anotarla. Para fijarla vos, definí

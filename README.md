@@ -66,19 +66,28 @@ cron— está en [`docs/DESPLEGUE-LINUX.md`](docs/DESPLEGUE-LINUX.md).
 
 ### En Windows con Docker (si ese equipo tiene Docker Desktop)
 
-1. Iniciar: `.\scripts\iniciar.ps1`
-2. Abrir:
+1. Poner una clave en `APP_KEY=` de `backend/.env.docker` (viene vacía:
+   `php artisan key:generate --show` y pegar el resultado ahí). Sin clave el
+   contenedor levanta pero todo pedido da "No application encryption key".
+   El camino de Laragon sin Docker no usa ese archivo: usa `backend/.env`.
+2. Iniciar: `.\scripts\iniciar.ps1`
+3. Abrir:
    - Pantallas: http://localhost:5173
    - API: http://localhost:8000/api/ping
    - Correos de prueba: http://localhost:8025 (solo desde el propio equipo)
-3. Detener: `.\scripts\detener.ps1`
+4. Detener: `.\scripts\detener.ps1`
+   (el script de iniciar de Windows no trae preflight; el de Linux sí, porque es
+   el camino oficial del server)
 
 ## Scripts disponibles (`scripts/`)
 
 | Script | ¿Para qué? |
 |---|---|
 | `iniciar.ps1` | Windows + Docker: construye, levanta todo, instala dependencias y migra la BD |
-| `iniciar.sh` | Linux + Docker: lo mismo, y además espera a que MySQL esté sano, optimiza el autoloader, enlaza `storage` y verifica `/api/ping` |
+| `iniciar.sh` | Linux + Docker: lo mismo. Primero pasa un preflight de configuración (`APP_KEY`, `FRONTEND_URL`, `ENRO_DB_PASSWORD`) y aborta sin tocar Docker si sigue con los valores del repo; después construye, levanta, `composer -o`, migra, verifica el esquema con `esquema:verificar` y prueba `/api/ping` |
+| `instalar-cron.sh` | Agenda (idempotente) el volcado nocturno de la base y el `schedule:run` de Laravel, que es lo que limpia `storage/app/backups` |
+| `respaldar-bd.sh` | El volcado en sí: `mysqldump` dentro del contenedor + gzip + verificación + retención. También a mano antes de un cambio riesgoso |
+| `servidor-publicacion.js` | Sirve el `dist` del build con el mismo encaminado que va a tener en el server, para probarlo localmente |
 | `detener.ps1` / `detener.sh` | Apagan los contenedores (con `--volumenes` además **borra la base**: pide confirmación escrita) |
 | `crear-base-de-datos-desde-cero.ps1` | BORRA y recrea la BD `sistema_escuela` + seeders (guarda backup en `backups/`) |
 | `crear-base-de-datos-desde-cero.sh` | Lo mismo, para Linux/Git Bash |
@@ -90,7 +99,10 @@ cron— está en [`docs/DESPLEGUE-LINUX.md`](docs/DESPLEGUE-LINUX.md).
   directo a la base.
 - Usuario/clave: `root` con la clave que define `ENRO_DB_PASSWORD` en el `.env`
   del compose (si no se pone, el default de desarrollo es `root`).
-- La estructura real la definen `backend/database/migrations/`.
+- La estructura real la definen `backend/database/migrations/`. Se comprueba con
+  `php artisan esquema:verificar`, que migra una base auxiliar desde cero y la
+  compara contra la de trabajo (los tests no la agarran: phpunit corre sobre
+  `sqlite :memory:` y ahí ninguna migración se ejecuta).
 - `base-de-datos/schema.sql` es una foto de referencia. Los `.sql` viejos quedaron
   archivados en `base-de-datos/respaldos-antiguos/` (no se usan para levantar el sistema).
 

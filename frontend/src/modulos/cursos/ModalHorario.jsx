@@ -4,7 +4,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { apiGet, apiPut, BACKEND_BASE } from "../../compartido/lib/api";
 import { X, Pencil, Search, BookOpen, Layers, Printer, FileDown } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
+import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
+import { bloquearScroll } from "../../compartido/lib/lockScroll";
 import useAviso from "../../compartido/componentes/modals/useAviso";
 import { useAuth } from "../../modulos/auth/AuthContext";
 import { cursoLabel } from "../../compartido/lib/cursos";
@@ -73,6 +75,7 @@ export default function ModalHorario({
   const [modoEdicion, setModoEdicion] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { montado, cerrando } = useCierreAnimado(visible);
   const [tab, setTab] = useState('general'); // 'general' | 'taller'
   const [subGrupo, setSubGrupo] = useState('A');
   const grupo = tab === 'general' ? null : subGrupo;
@@ -145,22 +148,24 @@ export default function ModalHorario({
   const materias = materiasDisponibles.length ? materiasDisponibles : localMaterias;
   const profIdx = Object.keys(profesoresIndex || {}).length ? profesoresIndex : localProfesIdx;
 
-  /* Bloquea el scroll del body cuando el modal esta abierto y resetea estado al abrir */
+  /* Reinicia la pantalla cada vez que se abre */
   useEffect(() => {
-    document.body.style.overflow = visible ? "hidden" : "auto";
-    if (visible) {
-      setModoEdicion(false);
-      setDirty(false);
-      setTab('general');
-      setSubGrupo('A');
-      initDoneRef.current = {};
-      setGrids({ general: null, A: null, B: null });
-      setErrores({});
-      setCeldaActiva(null);
-    }
-    return () => { document.body.style.overflow = "auto"; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!visible) return;
+    setModoEdicion(false);
+    setDirty(false);
+    setTab('general');
+    setSubGrupo('A');
+    initDoneRef.current = {};
+    setGrids({ general: null, A: null, B: null });
+    setErrores({});
+    setCeldaActiva(null);
   }, [visible]);
+
+  /* Bloquea el scroll del body mientras el modal esta montado (incluye el cierre animado) */
+  useEffect(() => {
+    if (!montado) return;
+    return bloquearScroll();
+  }, [montado]);
 
   /* Carga materias y profesores del backend cuando cambia anio/division */
   useEffect(() => {
@@ -479,20 +484,13 @@ export default function ModalHorario({
   const hlColor = highlightTarget?.color || "rgba(59,130,246,.14)";
 
   return (
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          className="mhor-overlay"
-          initial={false}
-          exit={{ opacity: 0 }}
-        >
-          <motion.div
-            className="mhor-dialog"
+    <>
+      {montado && (
+        <div className={`mhor-overlay sys-capa${cerrando ? " sys-cerrando" : ""}`}>
+          <div
+            className={`mhor-dialog sys-dialogo-sup${cerrando ? " sys-cerrando" : ""}`}
             role="dialog"
             aria-modal="true"
-            initial={{ y: -10, scale: 0.98 }}
-            animate={{ y: 0, scale: 1, transition: { type: "spring", stiffness: 260, damping: 22 } }}
-            exit={{ opacity: 0, y: -10, scale: 0.98, transition: { duration: 0.2 } }}
           >
             {/* Header */}
             <div className="mhor-header">
@@ -854,9 +852,9 @@ export default function ModalHorario({
                 </button>
               )}
             </div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 }

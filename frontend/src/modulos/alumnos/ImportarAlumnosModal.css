@@ -1,0 +1,402 @@
+/* ============================================
+   Estilos del modal de importación de alumnos
+   (src/modulos/alumnos/ImportarAlumnosModal.jsx)
+   ============================================ */
+
+/* Entrada por CSS (mismo criterio que ManualModal): el diálogo usa
+   initial={false} en Framer para que la animación de cierre no pise la de
+   apertura. */
+@keyframes iam-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes iam-dialog-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes iam-rotar {
+  to { transform: rotate(360deg); }
+}
+
+.iam-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.3));
+  animation: iam-backdrop-in 180ms ease-out backwards;
+}
+
+.iam-dialog {
+  width: 100%;
+  max-width: 46rem;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+  position: relative;
+  border-radius: var(--radius-3xl);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  animation: iam-dialog-in 240ms cubic-bezier(0.25, 0.46, 0.45, 0.94) backwards;
+}
+
+.iam-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.iam-header-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  border-radius: var(--radius-xl);
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: #fff;
+}
+
+.iam-header-texto {
+  flex: 1;
+  min-width: 0;
+}
+
+.iam-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.iam-subtitle {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.iam-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.iam-close:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+
+.iam-scroll {
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+  overflow-y: auto;
+}
+
+.iam-texto {
+  margin: 0 0 var(--sp-4);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: #475569;
+}
+
+/* Zona de selección de archivo: el input real está oculto y se abre con un
+   click sobre el área, así el usuario puede hacer click en cualquier parte. */
+.iam-zona {
+  position: relative;
+  margin: var(--sp-4) 0;
+  border-radius: var(--radius-2xl);
+  border: 1.5px dashed rgba(22, 163, 74, 0.45);
+  background: rgba(22, 163, 74, 0.05);
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.iam-zona:hover {
+  border-color: rgba(22, 163, 74, 0.75);
+  background: rgba(22, 163, 74, 0.08);
+}
+
+.iam-input-archivo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.iam-zona-contenido {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-5) var(--sp-4);
+  text-align: center;
+  color: #15803d;
+  /* Sin esto el contenido queda debajo del input transparente y el click
+     reabre el selector en vez de tocar el botón. */
+  pointer-events: none;
+}
+
+.iam-zona-contenido .iam-btn {
+  pointer-events: auto;
+}
+
+.iam-zona-titulo {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.iam-zona-nota {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.iam-error {
+  padding: var(--sp-3);
+  margin: var(--sp-3) 0;
+  border-radius: var(--radius-lg);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #b91c1c;
+}
+
+.iam-avisos {
+  padding: var(--sp-3);
+  margin: var(--sp-3) 0;
+  border-radius: var(--radius-lg);
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #b45309;
+}
+
+.iam-resumen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.iam-dato {
+  padding: var(--sp-3);
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.75);
+  text-align: center;
+}
+
+.iam-dato-valor {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: #0f172a;
+}
+
+.iam-dato-label {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.iam-dato-ok  { background: rgba(22, 163, 74, 0.08); border-color: rgba(22, 163, 74, 0.22); }
+.iam-dato-ok  .iam-dato-valor { color: #15803d; }
+.iam-dato-mal { background: rgba(239, 68, 68, 0.07); border-color: rgba(239, 68, 68, 0.2); }
+.iam-dato-mal .iam-dato-valor { color: #b91c1c; }
+
+.iam-bloque {
+  margin-bottom: var(--sp-4);
+}
+
+.iam-bloque-titulo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.iam-tabla-wrap {
+  overflow: auto;
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+/* Altura acotada: con 1200 filas la vista previa no puede estirar el diálogo. */
+.iam-tabla-wrap-corta {
+  max-height: 15rem;
+}
+
+.iam-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.iam-tabla th {
+  position: sticky;
+  top: 0;
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  font-weight: 700;
+  color: #0f172a;
+  background: rgba(241, 245, 249, 0.95);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.iam-tabla td {
+  padding: var(--sp-2) var(--sp-3);
+  color: #475569;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+  vertical-align: top;
+}
+
+.iam-tabla tr:last-child td {
+  border-bottom: none;
+}
+
+.iam-chip {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.iam-ok    { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+.iam-aviso { background: rgba(217, 119, 6, 0.12); color: #b45309; }
+.iam-mal   { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
+
+.iam-nota {
+  margin: var(--sp-2) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
+.iam-exito {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+  border-radius: var(--radius-2xl);
+  background: rgba(22, 163, 74, 0.08);
+  border: 1px solid rgba(22, 163, 74, 0.22);
+  color: #15803d;
+}
+
+.iam-exito-titulo {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.iam-exito-detalle {
+  margin-top: var(--sp-1);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.iam-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+.iam-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-lg);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 140ms ease, opacity 140ms ease;
+}
+
+.iam-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.iam-btn-primario {
+  border: none;
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: #fff;
+}
+
+.iam-btn-primario:hover:not(:disabled) {
+  background: linear-gradient(135deg, #15803d, #166534);
+}
+
+.iam-btn-secundario {
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
+}
+
+.iam-btn-secundario:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.iam-spin {
+  animation: iam-rotar 900ms linear infinite;
+}
+
+@media (max-width: 640px) {
+  .iam-backdrop {
+    padding: var(--sp-2);
+  }
+
+  .iam-header,
+  .iam-scroll {
+    padding-left: var(--sp-4);
+    padding-right: var(--sp-4);
+  }
+
+  .iam-resumen {
+    grid-template-columns: 1fr;
+  }
+
+  .iam-acciones {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .iam-btn {
+    justify-content: center;
+  }
+}

@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import {
   X, Info, CircleX, TriangleAlert, CircleCheck, CircleHelp,
   Mail, Lock, Loader2, Eye, EyeOff,
 } from "lucide-react";
+import useCierreAnimado from "../../lib/useCierreAnimado";
+import { bloquearScroll } from "../../lib/lockScroll";
 import "./AvisoModal.css";
 
 const ICONOS = {
@@ -49,6 +50,8 @@ export default function AvisoModal({
   const [error, setError] = useState("");
   const [visible, setVisible] = useState(false);
   const inputRef = useRef(null);
+  // El cierre se anima por CSS y el modal se desmonta al terminar.
+  const { montado, cerrando } = useCierreAnimado(open);
 
   // Reinicia el estado del input cada vez que se abre el modal.
   useEffect(() => {
@@ -72,12 +75,13 @@ export default function AvisoModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, onCancel, input, valor]);
 
+  // El scroll se libera al desmontar, no bien se pide cerrar: si se liberaba
+  // antes, la barra volvía mientras el modal todavía estaba a media opacidad
+  // y la página saltaba unos píxeles (otro parpadeo).
   useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
-  }, [open]);
+    if (!montado) return;
+    return bloquearScroll();
+  }, [montado]);
 
   useEffect(() => {
     if (open && input) setTimeout(() => inputRef.current?.focus(), 60);
@@ -100,22 +104,14 @@ export default function AvisoModal({
     input?.type === "email" ? <Mail size={18} /> : null;
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          key="aviso-backdrop"
-          initial={false}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15, ease: "easeOut" }}
-          className="aviso-backdrop"
+    <>
+      {montado && (
+        <div
+          className={`aviso-backdrop sys-capa${cerrando ? " sys-cerrando" : ""}`}
           onClick={onCancel}
         >
-          <motion.div
-            key="aviso-modal"
-            initial={false}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="aviso-modal"
+          <div
+            className={`aviso-modal sys-dialogo${cerrando ? " sys-cerrando" : ""}`}
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
@@ -175,10 +171,10 @@ export default function AvisoModal({
             <button type="button" onClick={onCancel} className="aviso-cerrar" aria-label="Cerrar">
               <X size={16} />
             </button>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 }
 
@@ -187,20 +183,14 @@ export function AvisoToast({ toast }) {
   if (!toast) return null;
   const Icono = ICONOS[toast.icon] || CircleCheck;
   return (
-    <AnimatePresence>
-      <motion.div
-        key={toast.key ?? "aviso-toast"}
-        initial={{ opacity: 0, y: -14, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -10, scale: 0.97 }}
-        transition={{ duration: 0.22, ease: "easeOut" }}
-        className={`aviso-toast aviso-toast-${toast.icon}`}
-        role="status"
-      >
-        <span className="aviso-toast-icon"><Icono size={18} /></span>
-        <span className="aviso-toast-text">{toast.title}</span>
-      </motion.div>
-    </AnimatePresence>
+    <div
+      key={toast.key ?? "aviso-toast"}
+      className={`aviso-toast aviso-toast-${toast.icon}`}
+      role="status"
+    >
+      <span className="aviso-toast-icon"><Icono size={18} /></span>
+      <span className="aviso-toast-text">{toast.title}</span>
+    </div>
   );
 }
 

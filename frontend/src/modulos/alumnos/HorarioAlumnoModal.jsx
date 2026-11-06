@@ -9,6 +9,7 @@ import { useAuth } from "../../modulos/auth/AuthContext"; // ⬅️ NUEVO
 import { cursoLabel, parseCurso } from "../../compartido/lib/cursos";
 import { useDeshacerAviso } from "../../compartido/lib/deshacer.jsx";
 import useAviso from "../../compartido/componentes/modals/useAviso";
+import { bloquearScroll } from "../../compartido/lib/lockScroll";
 import "./HorarioAlumnoModal.css";
 
 /*
@@ -157,10 +158,11 @@ function SegmentedTabs({ value, onChange }) {
 
 /* ============================ Componente principal ============================ */
 /* Modal de horario del alumno con paneles de resumen y cronograma editable */
-export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar }) {
-  // Rol (solo lectura si es profesor)
-  const { user } = useAuth();            // ⬅️ NUEVO
-  const isProfesor = user?.role === "profesor"; // ⬅️ NUEVO
+export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar, soloLectura = false }) {
+  // Solo lectura: el profesor nunca edita la grilla, y tampoco quien ve a un
+  // alumno de un curso que no puede modificar. Ver el horario es lectura.
+  const { user } = useAuth();
+  const esSoloLectura = user?.role === "profesor" || soloLectura;
   const { ofrecerDeshacer } = useDeshacerAviso();
   const [mostrarAviso, pedirConfirmacion, avisoModal, mostrarToast] = useAviso();
 
@@ -232,26 +234,22 @@ export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar
 
   // Bloquear el scroll del body mientras el modal está visible
   useEffect(() => {
-    if (visible) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = prev || ""; };
-    }
+    if (visible) return bloquearScroll();
   }, [visible]);
 
   // deshacer
   const editSnapshotRef = useRef(null);
   const startEditMode = () => {                      // ⬅️ mod: respeta solo lectura
-    if (isProfesor) return;
+    if (esSoloLectura) return;
     editSnapshotRef.current = entradas;
     setEditMode(true);
   };
   const stopEditModeToggle = () => {                // ⬅️ mod: respeta solo lectura
-    if (isProfesor) return;
+    if (esSoloLectura) return;
     setEditMode((v) => !v);
   };
   const undoEdits = () => {
-    if (isProfesor) return;                         // ⬅️ mod: respeta solo lectura
+    if (esSoloLectura) return;                         // ⬅️ mod: respeta solo lectura
     const base = editSnapshotRef.current ?? originalRef.current ?? [];
     setEntradas(base);
   };
@@ -379,7 +377,7 @@ export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar
   /* ===== Edicion del cronograma ===== */
   /* Asigna o remueve una materia en una celda especifica (dia y bloque horario) */
   const handleCellClick = (dia, bloque) => {
-    if (!editMode || isProfesor) return; // ⬅️ NUEVO: bloquear edición a profesor
+    if (!editMode || esSoloLectura) return; // la grilla no se toca en solo lectura
     const { name, mark } = parseMateriaValue(materiaActiva);
     const key = `${dia}-${bloque}`;
 
@@ -408,7 +406,7 @@ export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar
   };
 
   const clearDay = (dia) => {
-    if (!editMode || isProfesor) return; // ⬅️ NUEVO
+    if (!editMode || esSoloLectura) return; // ⬅️ NUEVO
     setEntradas(prev=>{
       const map = toGridMap(prev);
       for (let i=0;i<BLOQUES.length;i++) map.delete(`${dia}-${i}`);
@@ -416,7 +414,7 @@ export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar
     });
   };
   const clearCell = (dia,bloque) => {
-    if (!editMode || isProfesor) return; // ⬅️ NUEVO
+    if (!editMode || esSoloLectura) return; // ⬅️ NUEVO
     const key = `${dia}-${bloque}`;
     setEntradas(prev=>{
       const map = toGridMap(prev);
@@ -427,7 +425,7 @@ export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar
 
   /* Persiste los cambios del cronograma mediante API PUT y refresca los datos */
   const guardarCronograma = async (entriesOverride=null) => {
-    if (isProfesor) return; // ⬅️ NUEVO: no guardar si es profesor
+    if (esSoloLectura) return; // no se guarda lo que no se puede editar
     try {
       // Snapshot previo para poder deshacer (revertir las celdas que cambiaron).
       const antes = (originalRef.current || []).map(x => ({ ...x }));
@@ -540,7 +538,7 @@ export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar
 
   // Restablecer al plan (no guarda, solo carga en edición)
   const restablecerAlPlan = async () => {
-    if (isProfesor) return; // ⬅️ NUEVO
+    if (esSoloLectura) return; // ⬅️ NUEVO
     const ok = await pedirConfirmacion({
       icon: "question",
       title: "Restablecer al plan",
@@ -606,16 +604,12 @@ export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar
             {/* Área de paneles con animación discreta */}
             <div className="horario-body">
               <div className="horario-card">
-              <AnimatePresence mode="wait" initial={false}>
+              {/* key={panel} remonta el panel y reproduce la entrada por CSS.
+                  Sin AnimatePresence: al terminar su salida Framer suelta el
+                  estilo inline y deja el panel viejo opaco un frame (parpadeo). */}
+              <div className="horario-swap" key={panel}>
                 {panel === "resumen" && (
-                  <motion.div
-                    key="panel-resumen"
-                    initial={{ y: 8 }}
-                    animate={{ y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.18, ease: "easeOut" }}
-                    className="horario-panel"
-                  >
+                  <div className="horario-panel">
                     <ResumenPanel
                       entradas={entradas}
                       alumnoSafe={alumnoSafe}
@@ -624,17 +618,10 @@ export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar
                       overlayRec={overlayRec}
                       overlayInt={overlayInt}
                     />
-                  </motion.div>
+                  </div>
                 )}
                 {panel === "cronograma" && (
-                  <motion.div
-                    key="panel-cronograma"
-                    initial={{ y: 8 }}
-                    animate={{ y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.18, ease: "easeOut" }}
-                    className="horario-panel"
-                  >
+                  <div className="horario-panel">
                     <CronogramaPanel
                       gridMap={gridMap}
                       baseMap={baseMap}
@@ -658,16 +645,16 @@ export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar
                       recLblByMateria={recLblByMateria}
                       intLblByMateria={intLblByMateria}
                       restablecerAlPlan={restablecerAlPlan}
-                      readOnly={isProfesor} // ⬅️ NUEVO
+                      readOnly={esSoloLectura} // ⬅️ NUEVO
                     />
-                  </motion.div>
+                  </div>
                 )}
-              </AnimatePresence>
+              </div>
             </div>
             </div>
 
             {/* Footer: oculto para profesor */}
-            {panel === "cronograma" && !isProfesor && (
+            {panel === "cronograma" && !esSoloLectura && (
               <div className="horario-footer">
                 <button
                   onClick={restablecerAlPlan}

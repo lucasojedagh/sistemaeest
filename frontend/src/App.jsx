@@ -5,7 +5,7 @@ import React, { Suspense, lazy } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 
-import { RequireAuth, RequireGuest, RequireRole } from "./modulos/auth/guards";
+import { RequireAuth, RequireGuest, RequireRole, RequirePermiso } from "./modulos/auth/guards";
 import { useAuth } from "./modulos/auth/AuthContext";
 
 import Navbar from "./compartido/componentes/layout/Navbar";
@@ -31,16 +31,20 @@ import { ToastProvider } from "./compartido/componentes/Common/Toast";
 import { UndoProvider } from "./compartido/lib/deshacer.jsx";
 import DeshacerHost from "./compartido/componentes/Common/DeshacerHost";
 import OfflineBanner from "./compartido/componentes/Common/OfflineBanner";
+import BloqueoCambioClave from "./modulos/auth/BloqueoCambioClave";
 
 export default function App() {
   const { user } = useAuth();
   const location = useLocation();
 
   // Variantes de animacion para transiciones entre estados de autenticacion
+  // Sin "exit": al terminar su animación Framer suelta el estilo inline y deja
+  // un frame del shell entero opaco otra vez antes de desmontar (parpadeo de
+  // pantalla al entrar/salir). La entrada igual se ve porque el estado en
+  // reposo del CSS es opacidad 1.
   const shellVariants = {
     initial: { opacity: 0, scale: 0.985, filter: "blur(6px)" },
     animate: { opacity: 1, scale: 1,     filter: "blur(0px)" },
-    exit:    { opacity: 0, scale: 0.985, filter: "blur(6px)" },
   };
   const shellTransition = { duration: 0.26, ease: [0.22, 1, 0.36, 1] };
 
@@ -54,7 +58,6 @@ export default function App() {
         key={shellKey}
         initial="initial"
         animate="animate"
-        exit="exit"
         variants={shellVariants}
         transition={shellTransition}
         className="app-shell"
@@ -65,6 +68,9 @@ export default function App() {
 
         {/* Cartel de conexión: visible siempre que haya sesión */}
         {user && <OfflineBanner />}
+
+        {/* Clave temporal entregada en mano: no se usa el sistema hasta poner una propia */}
+        {user?.debe_cambiar_password && <BloqueoCambioClave />}
 
         <main className="app-main">
           <div className="app-content">
@@ -117,7 +123,9 @@ export default function App() {
                 path="/dashboard"
                 element={
                   <RequireAuth>
-                    <Dashboard />
+                    <RequirePermiso permiso="dashboard.ver" modulo="dashboard">
+                      <Dashboard />
+                    </RequirePermiso>
                   </RequireAuth>
                 }
               />
@@ -125,7 +133,9 @@ export default function App() {
                 path="/alumnos"
                 element={
                   <RequireAuth>
-                    <Alumnos />
+                    <RequirePermiso permiso="alumnos.ver" modulo="alumnos">
+                      <Alumnos />
+                    </RequirePermiso>
                   </RequireAuth>
                 }
               />
@@ -133,7 +143,9 @@ export default function App() {
                 path="/cursos"
                 element={
                   <RequireAuth>
-                    <Cursos />
+                    <RequirePermiso permiso="cursos.ver" modulo="cursos">
+                      <Cursos />
+                    </RequirePermiso>
                   </RequireAuth>
                 }
               />
@@ -141,7 +153,9 @@ export default function App() {
                 path="/profesores"
                 element={
                   <RequireAuth>
-                    <Profesores />
+                    <RequirePermiso permiso="profesores.ver" modulo="profesores">
+                      <Profesores />
+                    </RequirePermiso>
                   </RequireAuth>
                 }
               />
@@ -149,7 +163,7 @@ export default function App() {
                 path="/preceptores"
                 element={
                   <RequireAuth>
-                    <RequireRole role={["admin", "directivo", "jefe_preceptores", "preceptor", "prosecretaria"]}>
+                    <RequireRole role={["admin", "directivo", "jefe_preceptores", "preceptor", "prosecretaria"]} permiso="usuarios.ver" modulo="preceptores">
                       <Preceptores />
                     </RequireRole>
                   </RequireAuth>
@@ -159,7 +173,7 @@ export default function App() {
                 path="/jefe-preceptores"
                 element={
                   <RequireAuth>
-                    <RequireRole role={["admin", "directivo", "jefe_preceptores"]}>
+                    <RequireRole role={["admin", "directivo", "jefe_preceptores", "prosecretaria"]} permiso="usuarios.crear" modulo="jefe-preceptores">
                       <JefePreceptores />
                     </RequireRole>
                   </RequireAuth>
@@ -169,7 +183,9 @@ export default function App() {
                 path="/calificaciones"
                 element={
                   <RequireAuth>
-                    <Calificaciones />
+                    <RequirePermiso permiso="calificaciones.ver" modulo="calificaciones">
+                      <Calificaciones />
+                    </RequirePermiso>
                   </RequireAuth>
                 }
               />
@@ -177,17 +193,19 @@ export default function App() {
                 path="/asistencia"
                 element={
                   <RequireAuth>
-                    <Asistencia />
+                    <RequirePermiso permiso="asistencia.ver" modulo="asistencia">
+                      <Asistencia />
+                    </RequirePermiso>
                   </RequireAuth>
                 }
               />
 
-              {/* admin/directivo/jefe_preceptores */}
+              {/* admin/directivo/jefe_preceptores/prosecretaria */}
               <Route
                 path="/admin/usuarios"
                 element={
                   <RequireAuth>
-                    <RequireRole role={["admin", "directivo", "jefe_preceptores"]}>
+                    <RequireRole role={["admin", "directivo", "jefe_preceptores", "prosecretaria"]} permiso="usuarios.ver" modulo="usuarios">
                       <AdminUsers />
                     </RequireRole>
                   </RequireAuth>
@@ -197,7 +215,7 @@ export default function App() {
                 path="/historial"
                 element={
                   <RequireAuth>
-                    <RequireRole role={["admin", "directivo", "jefe_preceptores"]}>
+                    <RequireRole role={["admin", "directivo", "jefe_preceptores", "prosecretaria"]} permiso="historial.ver" modulo="historial">
                       <Historial />
                     </RequireRole>
                   </RequireAuth>
@@ -207,7 +225,9 @@ export default function App() {
                 path="/documentos"
                 element={
                   <RequireAuth>
-                    <Documentos />
+                    <RequirePermiso permiso="documentos.ver" modulo="documentos">
+                      <Documentos />
+                    </RequirePermiso>
                   </RequireAuth>
                 }
               />

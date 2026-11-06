@@ -17,13 +17,14 @@ import "./ProfesoresDetalle.css";
 const ROLES_DISPONIBLES = [
   { label: 'Profesor', value: 'profesor' },
   { label: 'Preceptor', value: 'preceptor' },
+  { label: 'Prosecretaria', value: 'prosecretaria' },
   { label: 'Jefe de preceptores', value: 'jefe_preceptores' },
   { label: 'Directivo', value: 'directivo' },
   { label: 'Admin', value: 'admin' },
 ];
 
 // Roles que NO requieren asignaciones de cursos (controlan todo el sistema).
-const ROLES_SIN_ASIGNACIONES = ['jefe_preceptores', 'directivo', 'admin'];
+const ROLES_SIN_ASIGNACIONES = ['jefe_preceptores', 'prosecretaria', 'directivo', 'admin'];
 
 // Componente: ProfesoresDetalle
 // Proposito: Modal de detalle y edicion de un profesor. Permite modificar datos personales,

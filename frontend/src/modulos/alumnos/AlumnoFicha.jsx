@@ -182,6 +182,10 @@ export default function AlumnoFicha({ open, onClose, alumno }) {
               <span className={field}>N° de matrícula</span>
               <span className={valBig}>{safe(a?.matricula) || "—"}</span>
             </div>
+            <div className="ficha-alumno-col-inner">
+              <span className={field}>Correo electrónico</span>
+              <span className={`${valBig} ficha-break`}>{safe(a?.email) || "—"}</span>
+            </div>
           </div>
 
           <div className="ficha-alumno-col-inner">

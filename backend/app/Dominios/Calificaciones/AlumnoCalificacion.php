@@ -17,6 +17,11 @@ use Illuminate\Support\Carbon;
  */
 class AlumnoCalificacion extends Model
 {
+    // La planilla oficial de la escuela tiene 4 columnas de valoraciones
+    // parciales por cuatrimestre; es el techo que aceptan la planilla, el
+    // formulario y el Excel.
+    public const MAX_PARCIALES = 4;
+
     protected $table = 'alumno_calificaciones';
     protected $guarded = ['id'];
 

@@ -1,0 +1,6 @@
+/* La foto ocupa el círculo que ya definía la clase de iniciales. */
+img.avatar-foto {
+  display: block;
+  object-fit: cover;
+  flex-shrink: 0;
+}

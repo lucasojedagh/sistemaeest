@@ -5,6 +5,7 @@ namespace App\Dominios\Calificaciones;
 use App\Http\Controllers\Controller;
 
 use App\Dominios\Calificaciones\VentanaNotaFinal;
+use App\Support\Permisos;
 use App\Support\RoleHierarchy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -16,8 +17,8 @@ class VentanaNotaFinalController extends Controller
     // Devuelve el estado actual de la ventana para que el frontend habilite/deshabilite la carga.
     public function show(Request $req)
     {
-        // Solo roles docentes (profesor o superior); sin_rol recibe 403.
-        if (!RoleHierarchy::isAtLeast($req->user()->role ?? null, RoleHierarchy::PROFESOR)) {
+        // Quien pueda ver calificaciones ve el estado de la ventana (sin_rol: 403).
+        if (!Permisos::puede((string) ($req->user()->role ?? ''), 'calificaciones.ver')) {
             abort(403, 'No tenés permiso para ver este recurso.');
         }
 

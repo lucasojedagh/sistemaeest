@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { apiPost } from "../../compartido/lib/api";
 import { cargarDivisiones } from "../../compartido/lib/divisiones";
-import { AnimatePresence, motion } from "framer-motion";
+import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
 import { ArrowUpCircle, ArrowDownCircle, ShieldAlert, X } from "lucide-react";
 import useConfirmAction from "../../compartido/hooks/useConfirmAction";
 import useAviso from "../../compartido/componentes/modals/useAviso";
@@ -43,6 +43,7 @@ export default function ModalPromocion({ visible, onClose, onDone }) {
   const [confirmarContrasena, modalPwd] = usePasswordPrompt();
   const showToast = useToast();
   const [loading, setLoading] = useState(false);
+  const { montado, cerrando } = useCierreAnimado(visible);
 
   /* Resetea el estado de carga al cerrar el modal */
   useEffect(() => {
@@ -133,20 +134,12 @@ export default function ModalPromocion({ visible, onClose, onDone }) {
 
   return (
     <>
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          className="mpromo-overlay"
-          initial={false}
-          exit={{ opacity: 0 }}
-        >
-          <motion.div
-            className="mpromo-dialog"
+      {montado && (
+        <div className={`mpromo-overlay sys-capa${cerrando ? " sys-cerrando" : ""}`}>
+          <div
+            className={`mpromo-dialog sys-dialogo-sup${cerrando ? " sys-cerrando" : ""}`}
             role="dialog"
             aria-modal="true"
-            initial={{ y: -10, scale: 0.98 }}
-            animate={{ y: 0, scale: 1, transition: { type: "spring", stiffness: 260, damping: 22 } }}
-            exit={{ opacity: 0, y: -10, scale: 0.98, transition: { duration: 0.18 } }}
           >
             {/* Header */}
             <div className="mpromo-header">
@@ -218,10 +211,9 @@ export default function ModalPromocion({ visible, onClose, onDone }) {
             </div>
 
             {/* (Footer removido: sin línea inferior y sin botón "Cerrar") */}
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
-    </AnimatePresence>
       {confirmModal}
       {avisoModal}
       {modalPwd}

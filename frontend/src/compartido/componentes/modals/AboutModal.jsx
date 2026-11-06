@@ -2,8 +2,10 @@
 // FILE: src/components/AboutModal.jsx
 // ===============================
 import React, { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { X, Users, Code, BookOpen, Mail, Heart, ExternalLink, GraduationCap, ChevronDown } from "lucide-react";
+import useCierreAnimado from "../../lib/useCierreAnimado";
+import { bloquearScroll } from "../../lib/lockScroll";
 import "./AboutModal.css";
 
 // Componente: AboutModal
@@ -16,6 +18,7 @@ import "./AboutModal.css";
 const AboutModal = ({ open, onClose }) => {
   const dialogRef = useRef(null);
   const [verAnteriores, setVerAnteriores] = useState(false);
+  const { montado, cerrando } = useCierreAnimado(open);
 
   // Datos reales del equipo
   const equipoActual = [
@@ -50,36 +53,19 @@ const AboutModal = ({ open, onClose }) => {
 
   /* Bloquea el scroll del body mientras el modal esta abierto */
   useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
-  }, [open]);
+    if (!montado) return;
+    return bloquearScroll();
+  }, [montado]);
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          key="about-backdrop"
-          initial={false}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18, ease: "easeOut" }}
-          className="about-backdrop"
-        >
-          <motion.div
-            key="about-modal"
+    <>
+      {montado && (
+        <div className={`about-backdrop sys-capa${cerrando ? " sys-cerrando" : ""}`}>
+          <div
             ref={dialogRef}
-            initial={false}
-            exit={{ 
-              opacity: 0, 
-              scale: 0.96,
-              y: 12
-            }}
-            transition={{ 
-              duration: 0.24, 
-              ease: [0.25, 0.46, 0.45, 0.94],
-            }}
-            className="about-dialog"
+            className={`about-dialog sys-dialogo${cerrando ? " sys-cerrando" : ""}`}
+            role="dialog"
+            aria-modal="true"
           >
             {/* Header - Cargar primero */}
             <motion.div 
@@ -355,10 +341,10 @@ const AboutModal = ({ open, onClose }) => {
                 </motion.div>
               </div>
             </motion.div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 };
 

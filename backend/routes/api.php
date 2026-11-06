@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 
 use App\Dominios\Alumnos\AlumnoController;
 use App\Dominios\Alumnos\AlumnoHorarioController;
+use App\Dominios\Alumnos\AlumnoImportadorController;
 use App\Dominios\Asistencia\AsistenciaController;
 use App\Dominios\Calificaciones\AlumnoCalificacionesController;
 use App\Dominios\Calificaciones\AlumnoPromedioController;
@@ -22,11 +23,15 @@ use App\Dominios\Documentos\DocumentoController;
 use App\Dominios\Profesores\ProfesorController;
 use App\Dominios\Profesores\ProfesorSuplenciaController;
 use App\Dominios\Sistema\BackupController;
+use App\Dominios\Sistema\CoberturaController;
 use App\Dominios\Sistema\DashboardController;
 use App\Dominios\Sistema\HistorialController;
+use App\Dominios\Sistema\ManualController;
 use App\Dominios\Usuarios\AdminUsersController;
 use App\Dominios\Usuarios\AuthApiController;
+use App\Dominios\Usuarios\AvatarController;
 use App\Dominios\Usuarios\PasswordResetController;
+use App\Dominios\Usuarios\RolesConfigController;
 
 // ====== PÚBLICAS ======
 Route::get('/ping', fn() => ['ok' => true]);
@@ -40,13 +45,22 @@ Route::post('/login', [AuthApiController::class, 'login'])->middleware('throttle
 Route::post('/register', [AuthApiController::class, 'register'])->middleware('throttle:10,10');
 
 // ====== PROTEGIDAS (autenticación requerida) ======
-Route::middleware('auth.token')->group(function () {
+// 'permiso' filtra por catálogo solo cuando el rol tiene una fila en roles_config
+// (rol personalizado, o rol de sistema al que se le quitaron permisos).
+Route::middleware(['auth.token', 'permiso'])->group(function () {
 
     // Perfil
     Route::get('/me',        [AuthApiController::class, 'me']);
     Route::get('/me/ambito', [AuthApiController::class, 'ambito']);
     Route::post('/logout',   [AuthApiController::class, 'logout']);
     Route::put('/profile',   [AuthApiController::class, 'updateProfile']);
+
+    // Foto de perfil: cada cuenta sube o quita la suya. Para verlas no hace
+    // falta un permiso especial — cualquiera autenticado puede ver la foto de
+    // los demás, que es para eso, identificar personas.
+    Route::post('/profile/avatar',    [AvatarController::class, 'store']);
+    Route::delete('/profile/avatar',  [AvatarController::class, 'destroy']);
+    Route::get('/avatars',            [AvatarController::class, 'index']);
 
     // Ticket de impresión de un solo uso (60s) para iframes/ventanas.
     Route::post('/print/ticket', [AuthApiController::class, 'printTicket']);
@@ -63,6 +77,19 @@ Route::middleware('auth.token')->group(function () {
 
     // Catálogo de roles
     Route::get('/roles', [AdminUsersController::class, 'roles']);
+    // Etiqueta y rango de cada rol, incluidos los personalizados (para el front).
+    Route::get('/roles/detalle', [RolesConfigController::class, 'nombres']);
+
+    // ===== ROLES Y PERMISOS (pestaña del módulo Usuarios) =====
+    // Sin middleware role: a propósito: 'role:' es jerárquico y admitiría también a
+    // directivo y prosecretaria. La pestaña es solo de admin y jefe de preceptores,
+    // y ese filtro por nombre exacto lo hace el controlador.
+    Route::prefix('admin/roles')->group(function () {
+        Route::get('/',               [RolesConfigController::class, 'index']);
+        Route::post('/',              [RolesConfigController::class, 'store']);
+        Route::put('/{rol}',          [RolesConfigController::class, 'update'])->where('rol', '[a-z0-9_]+');
+        Route::delete('/{rol}',       [RolesConfigController::class, 'destroy'])->where('rol', '[a-z0-9_]+');
+    });
 
     // ===== ADMINISTRACIÓN DE USUARIOS =====
 
@@ -93,10 +120,19 @@ Route::middleware('auth.token')->group(function () {
     Route::middleware('role:admin,directivo,jefe_preceptores,preceptor')
         ->put('/admin/users/{id}', [AdminUsersController::class, 'update']);
 
+    // Clave temporal entregada en mano (la recuperación por email no depende
+    // del correo del colegio). Mismos alcances que editar los datos: el
+    // controlador rechaza que se resetee a un rol superior.
+    Route::middleware('role:admin,directivo,jefe_preceptores,preceptor')
+        ->post('/admin/users/{id}/clave-temporal', [AdminUsersController::class, 'claveTemporal']);
+
     // ===== LECTURA (todos los autenticados) =====
     Route::get('/alumnos',                    [AlumnoController::class, 'index']);
     // Padrón en Excel. Estática antes que la parametrizada {alumno}.
     Route::get('/alumnos/padron/excel',       [AlumnoController::class, 'exportarPadron']);
+    // Plantilla de alta masiva. También estática antes que {alumno}.
+    Route::middleware('role:admin,directivo,jefe_preceptores')
+        ->get('/alumnos/importar/plantilla',  [AlumnoImportadorController::class, 'plantilla']);
     Route::get('/alumnos/{alumno}',           [AlumnoController::class, 'show'])->whereNumber('alumno');
     Route::get('/alumnos/{alumno}/calificaciones',  [AlumnoCalificacionesController::class, 'show'])->whereNumber('alumno');
     Route::get('/alumnos/{alumno}/anios-con-notas', [AlumnoCalificacionesController::class, 'aniosConNotas'])->whereNumber('alumno');
@@ -124,6 +160,11 @@ Route::middleware('auth.token')->group(function () {
     // Diagnóstico de backups: expone host/BD y rutas, solo roles de gestión (como el resto de backups).
     Route::middleware('role:admin,directivo,jefe_preceptores')
         ->get('/backups/sql/check',          [BackupController::class, 'check']);
+    // Revisión de cobertura: cruza cursos, horarios, fichas y cuentas para encontrar
+    // los huecos que ningún formulario rechaza pero que dejan un curso sin nadie que
+    // pueda pasarle la lista. Datos institucionales, solo roles de gestión.
+    Route::middleware('role:admin,directivo,jefe_preceptores')
+        ->get('/cobertura',                   [CoberturaController::class, 'index']);
     Route::get('/dashboard/top-performers',   [DashboardController::class, 'topPerformers']);
     // Números de las tarjetas del panel, agregados en el servidor.
     Route::get('/dashboard/resumen',          [DashboardController::class, 'resumen']);
@@ -147,11 +188,23 @@ Route::middleware('auth.token')->group(function () {
         Route::delete('/documentos/{id}', [DocumentoController::class, 'destroy'])->whereNumber('id');
     });
 
+    // ===== MANUALES (los puede leer cualquier cuenta autenticada) =====
+    Route::get('/manuales', [ManualController::class, 'index']);
+    Route::get('/manuales/{clave}', [ManualController::class, 'show'])
+        ->where('clave', 'usuario|programador');
+
     // ===== ESCRITURA (solo admin, directivo, jefe preceptores) =====
     Route::middleware('role:admin,directivo,jefe_preceptores')->group(function () {
         Route::post('/alumnos',                     [AlumnoController::class, 'store']);
         Route::delete('/alumnos/{alumno}',          [AlumnoController::class, 'destroy'])->whereNumber('alumno');
         Route::post('/alumnos/{alumno}/egresar',    [AlumnoController::class, 'egresar'])->whereNumber('alumno');
+        // Alta masiva desde Excel: leer la planilla es pesado, así que lleva su
+        // propio throttle. Primero vista previa, después importar.
+        Route::middleware('throttle:20,60')->group(function () {
+            Route::post('/alumnos/importar/preview',  [AlumnoImportadorController::class, 'preview']);
+            Route::post('/alumnos/importar/reporte',  [AlumnoImportadorController::class, 'reporte']);
+            Route::post('/alumnos/importar/aplicar',  [AlumnoImportadorController::class, 'aplicar']);
+        });
         Route::post('/alumnos/promocionar/preview', [PromotionController::class, 'preview']);
         Route::post('/alumnos/promocionar/aplicar', [PromotionController::class, 'aplicar']);
         // Alias histórico: el frontend usa /aplicar; se mantiene por compatibilidad.

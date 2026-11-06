@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Plus, Trash2, Printer, Save, Download } from 'lucide-react';
 import { apiGet, apiPut } from '../../compartido/lib/api';
-import { exportCSV } from '../../compartido/lib/export';
-import { mensajeDescarga } from '../../compartido/lib/descarga';
 import { useToast } from '../../compartido/componentes/Common/Toast';
 import { useDeshacerAviso } from '../../compartido/lib/deshacer.jsx';
 import PlanillaModal from './PlanillaModal';
@@ -27,6 +25,10 @@ function notesEqual(a, b) {
 }
 
 const PRELIMINAR_OPCIONES = ["TEA", "TEP", "TED"];
+
+// La planilla oficial de la escuela tiene 4 columnas de valoraciones parciales
+// por cuatrimestre; el backend valida el mismo techo (AlumnoCalificacion::MAX_PARCIALES).
+const MAX_PARCIALES = 4;
 
 function normalizePreliminar(arr) {
   return (arr || [])
@@ -171,6 +173,7 @@ export default function FormularioCalificaciones({
       prev.map((s, i) => {
         if (i !== idx) return s;
         const key = keyFor(period, kind);
+        if (kind === 'regular' && s[key].length >= MAX_PARCIALES) return s;
         return { ...s, [key]: [...s[key], ''] };
       })
     );
@@ -433,9 +436,18 @@ export default function FormularioCalificaciones({
             </button>
           </div>
         ))}
-        <button className="fc-add-btn" onClick={() => addNota(i, period, kind)}>
+        <button
+          className="fc-add-btn"
+          onClick={() => addNota(i, period, kind)}
+          disabled={arr.length >= MAX_PARCIALES}
+        >
           <Plus size={14} /> Agregar nota
         </button>
+        {arr.length >= MAX_PARCIALES && (
+          <p className="fc-parciales-hint">
+            {MAX_PARCIALES} de {MAX_PARCIALES} notas parciales del cuatrimestre.
+          </p>
+        )}
       </div>
     );
   };

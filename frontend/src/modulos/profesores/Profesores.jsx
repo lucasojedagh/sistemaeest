@@ -9,7 +9,8 @@ import { apiGet, apiPut, apiDelete } from "../../compartido/lib/api";
 import { cargarDivisiones } from "../../compartido/lib/divisiones";
 import { useToast } from "../../compartido/componentes/Common/Toast";
 import { Search, UsersRound, SlidersHorizontal, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import useCierreAnimado from '../../compartido/lib/useCierreAnimado';
 import ProfesoresDetalle from './ProfesoresDetalle';
 import ProfesorFicha from './ProfesorFicha';
 import ListaProfesores from './ListaProfesores';
@@ -27,6 +28,7 @@ import { cursoLabel, parseCurso } from "../../compartido/lib/cursos";
 import { mensajeAmable } from "../../compartido/lib/errores";
 import { ORDENES, ORDEN_DEFAULT, ordenarPersonas, leerOrden, guardarOrden } from "../../compartido/lib/orden";
 import DropdownMini from "../../compartido/componentes/Common/Dropdownmini";
+import { bloquearScroll } from "../../compartido/lib/lockScroll";
 import "./Profesores.css";
 
 /* --- Dropdown para seleccionar materia filtrada por año --- */
@@ -36,6 +38,7 @@ function DropdownMaterias({ value, onChange, anioSeleccionado, disabled: extDisa
 
   const [open, setOpen] = useState(false);
   const [opciones, setOpciones] = useState([]);
+  const { montado, cerrando } = useCierreAnimado(open, 150);
   const label = value === 'todas' || !value ? 'Materia' : value;
 
   useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
@@ -75,15 +78,8 @@ function DropdownMaterias({ value, onChange, anioSeleccionado, disabled: extDisa
         </motion.span>
       </button>
 
-      <AnimatePresence>
-        {open && !disabled && (
-          <motion.div
-            initial={{ y: -10 }}
-            animate={{ y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="prof-drop-panel"
-          >
+      {montado && !disabled && (
+        <div className={`prof-drop-panel sys-desplegable${cerrando ? " sys-cerrando" : ""}`}>
             <div
               className={`prof-drop-option prof-drop-option--all ${value === 'todas' ? 'prof-drop-option--selected' : ''}`}
               onClick={() => { onChange('todas'); setOpen(false); }}
@@ -99,9 +95,8 @@ function DropdownMaterias({ value, onChange, anioSeleccionado, disabled: extDisa
                 {opt.label}
               </div>
             ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }
@@ -143,7 +138,6 @@ const Profesores = () => {
   // Si se llega con ?rol=suplente (ej: desde el panel), el filtro acompaña.
   useEffect(() => {
     if (["titular", "suplente"].includes(rolDesdeUrl)) setFiltroRol(rolDesdeUrl);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rolDesdeUrl]);
   // Orden de la lista (se recuerda por pantalla).
   const [orden, setOrden] = useState(() => leerOrden('profesores'));
@@ -175,9 +169,8 @@ const Profesores = () => {
   const [profesores, setProfesores] = useState(() => getCached('profesores/activos') || []);
 
   useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = (mostrarDetalle || mostrarFicha) ? 'hidden' : prev;
-    return () => { document.body.style.overflow = prev; };
+    if (!mostrarDetalle && !mostrarFicha) return;
+    return bloquearScroll();
   }, [mostrarDetalle, mostrarFicha]);
 
   // Cursos (año + divisiones) para los filtros. Si el servidor no responde se

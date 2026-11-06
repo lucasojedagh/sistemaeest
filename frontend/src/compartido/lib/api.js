@@ -74,19 +74,23 @@ function invalidarTrasEscritura(path) {
 
 // ---- Origen de la API ----------------------------------------------------
 // Tres modos soportados (ver frontend/.env.example):
-//   1. Sin VITE_API_BASE (dev local, no hay archivo .env) -> http://localhost:8000/api
+//   1. Sin VITE_API_BASE -> en dev http://localhost:8000/api, en build "/api"
 //   2. VITE_API_BASE=/api  (mismo origen; nginx/ruta relativa) -> "/api"
 //   3. VITE_API_BASE=https://api.ejemplo.edu/api (otro host)  -> absoluto, tal cual
 // Una base RELATIVA (empieza con "/") se CONSERVA: el navegador la resuelve
 // contra el origen que está sirviendo la página, así que el mismo build funciona
 // en localhost, en la IP/dominio del colegio o detrás de un proxy sin recompilar.
-// El default de localhost solo aplica cuando la variable NO está definida.
+// El default cuando NO hay variable depende de cómo se corre el código:
+//   - `npm run dev`  -> el `php artisan serve` de la misma máquina.
+//   - `npm run build` -> mismo origen: el dist copiado al server habla con el
+//     "/api" que le sirve la página. Quemar localhost en el bundle haría que
+//     cada PC de la escuela buscara la API en su propio equipo y el login no
+//     abriera ni desde el server.
 const DEV_API_BASE = "http://localhost:8000/api";
 
 function resolverApiBase(valor) {
   const crudo = String(valor ?? "").trim();
-  // Sin variable (o vacia): backend local de desarrollo.
-  if (!crudo) return DEV_API_BASE;
+  if (!crudo) return import.meta.env.DEV ? DEV_API_BASE : "/api";
   // URL absoluta http/https: se respeta, solo se le quita la barra final.
   if (/^https?:\/\//i.test(crudo)) return crudo.replace(/\/+$/, "");
   // Relativa: se normaliza a raiz-de-origen ("/api") para que no dependa de la
@@ -252,6 +256,32 @@ export async function apiBlob(path, opts) {
     const data = await readSafely(res);
     // Mensaje en criollo: nunca mostrar método/URL/códigos al usuario final.
     const err = new Error((data && data.message) || "No se pudo descargar el archivo. Revisá tu conexión e intentá de nuevo.");
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return res.blob();
+}
+
+// Subida de un archivo que devuelve otro archivo (por ejemplo el reporte de
+// filas rechazadas de una importación). Devuelve Blob, no JSON.
+export async function apiUploadBlob(path, formData) {
+  const url = apiUrl(path);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+      ...authHeaders(),
+    },
+    body: formData,
+  });
+  if (res.status === 401) {
+    handleUnauthorized();
+  }
+  if (!res.ok) {
+    const data = await readSafely(res);
+    const err = new Error((data && data.message) || "No se pudo generar el archivo. Revisá tu conexión e intentá de nuevo.");
     err.status = res.status;
     err.data = data;
     throw err;

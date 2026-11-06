@@ -17,3 +17,42 @@ backups/*.sql
 # Sistema
 .DS_Store
 Thumbs.db
+
+# -----------------------------------------------------------------------------
+# Material local de trabajo: NUNCA al repositorio.
+#
+# El motivo no es el espacio en disco. En estas carpetas hay copias del .env
+# (con APP_KEY y claves de correo), volcados completos de la base con los
+# apellidos y DNI de 1200 alumnos, y los respaldos de los que se depende cuando
+# algo sale mal. Todo eso tiene que seguir existiendo en el disco, y todo eso
+# tiene que seguir sin existir en el historial de un repo que es público.
+#
+# OJO con el patrón: la copia dentro de _backup_... se llama `backend_env`, con
+# guion bajo, así que `backend/.env` de arriba nunca la cubrió.
+# -----------------------------------------------------------------------------
+/_backup_*/
+backend/_backup_*
+backend/_audit_*
+backend/_audit_scratch/
+backend/_db_*.json
+
+# Copias de seguridad sueltas que dejan las ediciones grandes (.php.bak-algo)
+*.bak-*
+
+# Copia local del env de desarrollo, con la clave real
+backend/.env.backup-local
+
+# Duplicados de los manuales generados (la versión versionada vive en docs/)
+/Manual-de-usuario-Sistema-EEST.docx
+/Manual-de-usuario-Sistema-EEST.pdf
+/Manual-del-programador-Sistema-EEST.docx
+/Manual-del-programador-Sistema-EEST.pdf
+
+# Planilla REAL de inscriptos: nombre, DNI, curso y datos familiares de cada
+# alumno. El backend no la lee (lee la que sube el usuario), así que no hace
+# falta que esté en el repo.
+/archivos/REGISTRO ALUMNADO 2026.xlsx
+
+# Empaquetados del proyecto entero: pesan más que todo el código junto
+*.rar
+*.zip

@@ -8,6 +8,7 @@ use App\Dominios\Alumnos\Alumno;
 use App\Dominios\Profesores\Profesor;
 use App\Dominios\Calificaciones\AlumnoMateriaEstado;
 use App\Dominios\Usuarios\User;
+use App\Support\Alcances;
 use App\Support\AuthorizesScope;
 use App\Support\RoleHierarchy;
 use Illuminate\Http\Request;
@@ -40,8 +41,8 @@ class DashboardController extends Controller
     // para un ciclo lectivo determinado (o el ano actual por defecto).
     public function topPerformers(Request $req)
     {
-        // Reporte agregado de rendimiento: solo roles docentes/staff.
-        if (!RoleHierarchy::isAtLeast($req->user()->role, RoleHierarchy::PROFESOR)) {
+        // Reporte agregado de rendimiento: el alcance de lectura de calificaciones decide.
+        if (!$this->puedeVer($req, 'calificaciones')) {
             abort(403, 'No tenés permiso para ver el reporte de rendimiento.');
         }
 
@@ -80,9 +81,9 @@ class DashboardController extends Controller
             ->orderByDesc('promedio')
             ->limit(10);
 
-        // Profesor/preceptor: solo ve sus cursos asignados.
+        // El panel se rige por el alcance de lectura de calificaciones del rol.
         // Usa assignedPairs (une asignaciones de usuario y ficha profesional por email).
-        if (!$this->userCanWriteAll($req)) {
+        if ($this->alcanceVer($req, 'calificaciones') !== Alcances::TODO) {
             $assigns = collect($this->assignedPairs($req))
                 ->filter(fn ($p) => !empty($p['anio']))
                 ->map(fn ($p) => [(int) $p['anio'], $p['division'] ?? null])

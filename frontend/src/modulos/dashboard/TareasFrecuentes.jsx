@@ -42,7 +42,7 @@ export default function TareasFrecuentes({ userRole }) {
         subtitulo: cursoTxt ? `Calificaciones de ${cursoTxt}` : "Notas por curso y materia",
         icon: PenLine,
         color: "tf-blue",
-        roles: ["admin", "directivo", "jefe_preceptores", "profesor"],
+        roles: ["admin", "directivo", "jefe_preceptores", "prosecretaria", "profesor"],
         to: `/calificaciones${q}`,
       },
       {

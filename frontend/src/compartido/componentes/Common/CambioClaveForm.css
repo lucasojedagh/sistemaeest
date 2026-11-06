@@ -1,0 +1,157 @@
+.ccf {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ccf-encabezado {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ccf-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--indigo-50);
+  color: var(--indigo-600);
+}
+
+.ccf-titulo {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.ccf-sub {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--gray-600);
+}
+
+.ccf-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ccf-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+
+.ccf-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.ccf-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 1px solid var(--gray-300);
+  border-radius: 9px;
+  font-size: 0.9rem;
+  color: var(--gray-900);
+  background: #fff;
+}
+
+.ccf-input-wrap .ccf-input {
+  padding-right: 36px;
+}
+
+.ccf-input:focus {
+  outline: none;
+  border-color: var(--indigo-500);
+  box-shadow: 0 0 0 3px var(--indigo-100);
+}
+
+.ccf-input:disabled {
+  background: var(--gray-100);
+  color: var(--gray-500);
+}
+
+.ccf-ojo {
+  position: absolute;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gray-500);
+  cursor: pointer;
+}
+
+.ccf-ojo:hover {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.ccf-error {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--rose-700);
+}
+
+.ccf-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ccf-btn-primario,
+.ccf-btn-secundario {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ccf-btn-primario {
+  border: none;
+  background: var(--indigo-600);
+  color: #fff;
+}
+
+.ccf-btn-primario:hover:not(:disabled) {
+  background: var(--indigo-800);
+}
+
+.ccf-btn-primario:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.ccf-btn-secundario {
+  border: 1px solid var(--gray-300);
+  background: #fff;
+  color: var(--gray-700);
+}
+
+.ccf-btn-secundario:hover {
+  background: var(--gray-100);
+}
+
+.ccf-gira {
+  animation: ccf-rotar 0.9s linear infinite;
+}
+
+@keyframes ccf-rotar {
+  to { transform: rotate(360deg); }
+}

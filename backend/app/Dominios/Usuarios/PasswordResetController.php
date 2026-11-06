@@ -73,6 +73,8 @@ class PasswordResetController extends Controller
                         'remember_token' => Str::random(60),
                         // Invalida el token de API si lo usás para auth
                         'api_token'      => null,
+                        // La clave puesta por el usuario ya no es provisoria.
+                        'debe_cambiar_password' => false,
                     ])->save();
 
                     // Cambiar la clave cierra TODAS las sesiones abiertas:

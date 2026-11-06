@@ -1,6 +1,6 @@
 // Funciones API para autenticacion y gestion de usuarios.
 // Todas las llamadas pasan por la capa unica de red (src/lib/api).
-import { apiGet, apiPost, apiPut, apiDelete } from "../lib/api";
+import { apiGet, apiPost, apiPut, apiDelete, apiUpload } from "../lib/api";
 
 /* ===== Auth basica ===== */
 // Registra un nuevo usuario en el sistema con nombre, credenciales y rol elegido de la lista.
@@ -46,6 +46,19 @@ export async function apiUpdateProfile(payload) {
   return apiPut("/profile", payload); // { id, name, email, role }
 }
 
+/* ===== Foto de perfil ===== */
+// Sube o reemplaza la foto propia. El campo se llama "avatar" en el multipart.
+export async function apiSubirAvatar(archivo) {
+  const fd = new FormData();
+  fd.append("avatar", archivo);
+  return apiUpload("/profile/avatar", fd); // { avatar_version }
+}
+
+// Quita la foto propia: las pantallas vuelven a las iniciales.
+export async function apiQuitarAvatar() {
+  return apiDelete("/profile/avatar"); // { avatar_version: null }
+}
+
 /* ===== Roles / Admin ===== */
 // Obtiene la lista de roles disponibles en el sistema.
 export async function apiRoles() {
@@ -58,8 +71,10 @@ export async function apiAdminUsers() {
 }
 
 // Obtiene usuarios filtrados por rol con sus asignaciones en una sola consulta.
+// Acepta un rol o una lista (se envían separados por coma y el backend los agrupa).
 export async function apiAdminUsersByRole(role) {
-  return apiGet(`/admin/users?role=${role}&with_assignments=1&per_page=200`);
+  const rol = Array.isArray(role) ? role.join(",") : role;
+  return apiGet(`/admin/users?role=${encodeURIComponent(rol)}&with_assignments=1&per_page=200`);
 }
 
 // Obtiene los usuarios pendientes de verificacion (solo admin).
@@ -98,6 +113,12 @@ export async function apiAdminCreateUser({ name, apellido, email, dni, password,
 // Actualiza los datos de un usuario existente (solo admin).
 export async function apiAdminUpdateUser(id, payload) {
   return apiPut(`/admin/users/${id}`, payload);
+}
+
+// Clave temporal para entregar en mano: la respuesta trae la clave una sola
+// vez (no se guarda ni se puede volver a pedir sin generar otra).
+export async function apiAdminClaveTemporal(id) {
+  return apiPost(`/admin/users/${id}/clave-temporal`); // { id, nombre, email, clave }
 }
 
 // Actualiza el rol de un usuario especifico (solo admin).

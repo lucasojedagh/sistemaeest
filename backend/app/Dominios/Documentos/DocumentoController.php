@@ -33,10 +33,10 @@ class DocumentoController extends Controller
         RoleHierarchy::PRECEPTOR,
     ];
 
-    /** Descarga de archivos institucionales: solo roles docentes/staff. */
+    /** Descarga de archivos institucionales: el alcance de documentos del rol decide. */
     private function abortIfNotStaff(Request $request): void
     {
-        if (!RoleHierarchy::isAtLeast($request->user()->role, RoleHierarchy::PROFESOR)) {
+        if (\App\Support\Alcances::ver($request->user()->role, 'documentos') === \App\Support\Alcances::NADA) {
             abort(403, 'No tenés permiso para descargar documentos.');
         }
     }

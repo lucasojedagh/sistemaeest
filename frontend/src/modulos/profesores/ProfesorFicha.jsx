@@ -5,6 +5,7 @@ import React from "react";
 import FichaLayout, { field, valBig, card, chipBlue, tag } from "../../compartido/componentes/Common/FichaLayout";
 import { cursoLabel } from "../../compartido/lib/cursos";
 import { useAuth } from "../../modulos/auth/AuthContext";
+import { esGestion } from "../../modulos/auth/roles";
 
 /*
  * Componente: ProfesorFicha
@@ -47,9 +48,9 @@ export default function ProfesorFicha({ open, onClose, profesor }) {
   const asigs = asAsignaciones(p.asignaciones);
   const obs = (p.observaciones || "").toString().trim();
   const titulo = `${apellido}, ${nombre}`.replace(/^, |, $/g, "");
-  // Ficha completa solo para gestión (admin/directivo/jefe). Rangos bajos
+  // Ficha completa solo para gestión (admin/directivo/jefe/prosecretaria). Rangos bajos
   // ven únicamente contacto (nombre/email) y cursos asignados.
-  const puedeVerTodo = ["admin", "directivo", "jefe_preceptores"].includes(currentUser?.role);
+  const puedeVerTodo = esGestion(currentUser?.role);
   // Un profesor no ve las observaciones de sus pares (solo las suyas).
   const esOtroProfesor =
     currentUser?.role === "profesor" &&

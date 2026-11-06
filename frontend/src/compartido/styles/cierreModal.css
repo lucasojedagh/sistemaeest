@@ -1,0 +1,75 @@
+/* ============================================
+   Cierre animado de modales, diálogos y dropdowns
+   --------------------------------------------
+   La entrada la sigue definiendo cada componente con su keyframe *-in.
+   Acá está sólo la SALIDA, común a todo el sistema, para que ningún modal
+   dependa de la animación de cierre de Framer Motion: esa animación suelta
+   el estilo inline al terminar y deja un frame con el diálogo opaco otra
+   vez antes de desmontar (el parpadeo al cerrar).
+
+   Cómo se usa (ver lib/useCierreAnimado.js):
+     <div className="aviso-backdrop sys-capa">          siempre
+     <div className="aviso-backdrop sys-capa sys-cerrando">  mientras sale
+
+   El prefijo `body` sube la especificidad por encima de la regla de entrada
+   de cada componente, que vive en su propio CSS.
+   ============================================ */
+
+@keyframes sys-capa-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes sys-dialogo-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(10px) scale(0.96); }
+}
+
+/* Diálogos que entran desde arriba (modales de Cursos). */
+@keyframes sys-dialogo-sup-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-10px) scale(0.98); }
+}
+
+/* Dropdowns y popovers: salida más corta y discreta. */
+@keyframes sys-desplegable-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* Cierre con opacidad sola: para capas y diálogos cuyo transform propio
+   no se puede pisar (posicionan con translate(-50%,-50%) o animan en altura). */
+@keyframes sys-opacidad-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+body .sys-cerrando.sys-capa {
+  animation: sys-capa-out 170ms ease-in both;
+}
+
+body .sys-cerrando.sys-dialogo {
+  animation: sys-dialogo-out 200ms cubic-bezier(0.4, 0, 0.6, 1) both;
+}
+
+body .sys-cerrando.sys-dialogo-sup {
+  animation: sys-dialogo-sup-out 200ms cubic-bezier(0.4, 0, 0.6, 1) both;
+}
+
+body .sys-cerrando.sys-desplegable {
+  animation: sys-desplegable-out 120ms ease-in both;
+}
+
+body .sys-cerrando.sys-opacidad {
+  animation: sys-opacidad-out 170ms ease-in both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .sys-cerrando.sys-capa,
+  body .sys-cerrando.sys-dialogo,
+  body .sys-cerrando.sys-dialogo-sup,
+  body .sys-cerrando.sys-desplegable,
+  body .sys-cerrando.sys-opacidad {
+    animation: none;
+  }
+}

@@ -70,7 +70,7 @@
   margin-right: var(--sp-2);
 }
 
-/* ---------- Acciones del header (descargar + agregar) ---------- */
+/* ---------- Acciones del header (descargar, importar, agregar) ---------- */
 .alumnos-header-actions {
   display: flex;
   gap: 10px;
@@ -112,6 +112,24 @@
 
 .alumnos-btn-download:disabled:hover {
   background-color: #f1f5f9;
+}
+
+/* Alta masiva desde Excel: verde para que se distinga del botón gris de
+   descarga y del azul de "Agregar alumno". */
+.alumnos-btn-import {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid #bbf7d0;
+  background-color: #ecfdf5;
+  color: #15803d;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-in-out);
+}
+
+.alumnos-btn-import:hover {
+  background-color: #d1fae5;
 }
 
 /* ---------- Tarjeta de filtros ---------- */

@@ -22,6 +22,16 @@
   max-width: 384px;
 }
 
+/* Salida por CSS puro: Framer soltaba el style inline al terminar y se veía
+   un frame con la notificación otra vez opaca (parpadeo al cerrar). */
+@keyframes toast-item-salida {
+  to { opacity: 0; transform: translateX(100px) scale(0.9); }
+}
+
+.toast-item-salida {
+  animation: toast-item-salida 200ms ease-in both;
+}
+
 .toast-item-icon {
   flex-shrink: 0;
   margin-top: 2px;

@@ -1,5 +1,4 @@
 import React from "react";
-import { motion } from "framer-motion";
 import { Inbox } from "lucide-react";
 import "./EmptyState.css";
 
@@ -18,10 +17,8 @@ import "./EmptyState.css";
 
 export default function EmptyState({ icon: Icon = Inbox, title = "Sin datos", description = "No hay información para mostrar.", action, compact = false }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`emptystate ${compact ? "emptystate-compact" : "emptystate-default"}`}
+    <div
+      className={`emptystate sys-bloque ${compact ? "emptystate-compact" : "emptystate-default"}`}
     >
       <div className="emptystate-icon-wrap">
         <Icon size={28} className="emptystate-icon" />
@@ -29,6 +26,6 @@ export default function EmptyState({ icon: Icon = Inbox, title = "Sin datos", de
       <h3 className="emptystate-title">{title}</h3>
       <p className="emptystate-desc">{description}</p>
       {action && <div className="emptystate-action">{action}</div>}
-    </motion.div>
+    </div>
   );
 }

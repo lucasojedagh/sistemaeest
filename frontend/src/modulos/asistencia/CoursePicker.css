@@ -183,6 +183,28 @@
   background-color: var(--gray-50);
 }
 
+/* Cursos que la cuenta ve pero no puede marcar: quedan visibles para que no
+   parezca que el curso no existe, pero no se eligen. */
+.picker-option-bloqueado {
+  color: var(--gray-400);
+  cursor: not-allowed;
+}
+
+.picker-option-bloqueado:hover {
+  background-color: transparent;
+}
+
+.picker-nota {
+  margin: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2-5) var(--sp-3);
+  border: 1px solid var(--amber-200);
+  border-radius: var(--radius-md);
+  background: var(--amber-50);
+  color: var(--amber-800);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .picker-option-text {
   flex: 1 1 0%;
   overflow: hidden;
@@ -202,6 +224,7 @@
   padding: var(--sp-6) var(--sp-4);
   font-size: var(--text-sm);
   color: var(--gray-500);
+  line-height: 1.45;
 }
 /* ---------- Escritorio: el menu recupera su ancho de 340px ---------- */
 @media (min-width: 640px) {

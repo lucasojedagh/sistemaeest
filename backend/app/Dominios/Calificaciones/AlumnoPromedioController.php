@@ -23,10 +23,10 @@ class AlumnoPromedioController extends Controller
             return response()->json(['materias' => []]);
         }
 
-        // Lectura por ámbito: profesor/preceptor solo ven alumnos de sus cursos; sin_rol recibe 403.
+        // Lectura por alcance del rol sobre calificaciones.
         $alumno = Alumno::find($alumnoId);
         if (!$alumno) return response()->json(['message' => 'Alumno no encontrado'], 404);
-        $this->assertCanReadCurso($req, $alumno->anio, $alumno->division);
+        $this->assertCanReadCurso($req, $alumno->anio, $alumno->division, 'calificaciones');
 
         $anio  = $req->query('anio');
         $div   = $req->query('division');

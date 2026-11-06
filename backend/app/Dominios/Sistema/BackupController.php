@@ -26,8 +26,8 @@ class BackupController extends Controller
     /** Diagnóstico rápido del entorno. */
     public function check(Request $request)
     {
-        // Expone confianza de BD y rutas de storage: solo roles docentes/staff.
-        if (!RoleHierarchy::isAtLeast($request->user()->role, RoleHierarchy::PROFESOR)) {
+        // Expone credenciales de BD y rutas de storage: requiere el permiso de respaldos.
+        if (!\App\Support\Permisos::puede($request->user()->role, 'backup.usar')) {
             abort(403, 'No tenés permiso para ver el diagnóstico de backups.');
         }
 

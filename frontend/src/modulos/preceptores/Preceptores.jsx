@@ -4,15 +4,17 @@
 import './Preceptores.css';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Search, UsersRound, X, Shield, Eye, EyeOff, Lock, Pencil, Trash2, SlidersHorizontal } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
 import useAviso from '../../compartido/componentes/modals/useAviso';
 import usePasswordPrompt from '../../compartido/componentes/modals/usePasswordPrompt';
 import { apiAdminUsersByRole, apiAdminCreateUser, apiAdminUpdateUser, apiAdminDeleteUser, apiAdminGetAssignments, apiAdminSaveAssignments } from '../../compartido/api/auth';
 import Breadcrumbs from '../../compartido/componentes/Common/Breadcrumbs';
+import Avatar from '../../compartido/componentes/Common/Avatar';
 import PreceptorFicha from './PreceptorFicha';
 import DropdownFiltroAnios from '../alumnos/DropdownFiltroAnios';
 import DropdownFiltroEstado from '../alumnos/DropdownFiltroEstado';
 import { useAuth } from '../auth/AuthContext';
+import { ROLE_LABELS, canManageRole } from '../auth/roles';
 import { getCached, setCache } from '../../compartido/lib/pageCache';
 import { cargarDivisiones } from '../../compartido/lib/divisiones';
 import { apiAdminUpdateUserRole } from '../../compartido/api/auth';
@@ -29,13 +31,14 @@ import useAvisoDeCambios from '../../compartido/hooks/useAvisoDeCambios';
 const ROLES_DISPONIBLES = [
   { label: 'Profesor', value: 'profesor' },
   { label: 'Preceptor', value: 'preceptor' },
+  { label: 'Prosecretaria', value: 'prosecretaria' },
   { label: 'Jefe de preceptores', value: 'jefe_preceptores' },
   { label: 'Directivo', value: 'directivo' },
   { label: 'Admin', value: 'admin' },
 ];
 
 // Roles que NO requieren asignaciones de cursos (controlan todo el sistema).
-const ROLES_SIN_ASIGNACIONES = ['jefe_preceptores', 'directivo', 'admin'];
+const ROLES_SIN_ASIGNACIONES = ['jefe_preceptores', 'prosecretaria', 'directivo', 'admin'];
 
 /* ---- Dropdown simple reutilizable ---- */
 function CursoDropdownInline({ cursosDisponibles = [], anio, division, onSelect }) {
@@ -104,7 +107,11 @@ const statusLabels = {
 
 // Modal para crear o editar un preceptor: formulario con datos personales, contrasena y asignaciones
 function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles, targetRole = 'preceptor', onDarDeBaja }) {
+  const { user } = useAuth();
   const isEdit = preceptor?.id;
+  // En una pantalla que mezcla roles (jefe + prosecretaría) cada cuenta muestra
+  // su propio rol, no el rol del filtro de la página.
+  const rolEnPantalla = isEdit ? (preceptor.role || targetRole) : targetRole;
   // Estado del formulario: datos basicos y lista de asignaciones (anio/division)
   const [form, setForm] = useState({ name: '', apellido: '', email: '', dni: '', password: '', passwordConfirm: '', asignaciones: [] });
   // Rol actual (solo en edicion) y rol seleccionado para el cambio
@@ -116,6 +123,7 @@ function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles
   const [anio, setAnio] = useState('');
   const [division, setDivision] = useState('');
   const [errors, setErrors] = useState({});
+  const { montado, cerrando } = useCierreAnimado(visible);
   const [confirmAction, confirmModal] = useConfirmAction();
   const [mostrarAviso, , avisoModal] = useAviso();
   const [confirmarContrasena, modalPwd] = usePasswordPrompt();
@@ -151,7 +159,14 @@ function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles
   }, [visible, preceptor?.id]);
 
   // Roles que NO requieren asignaciones de cursos: ocultamos la seccion.
-  const ocultarAsignaciones = ROLES_SIN_ASIGNACIONES.includes(isEdit ? rolSeleccionado : targetRole);
+  const ocultarAsignaciones = ROLES_SIN_ASIGNACIONES.includes(isEdit ? rolSeleccionado : rolEnPantalla);
+
+  // Solo se pueden asignar roles que el usuario logueado puede gestionar; el rol
+  // actual siempre queda visible para no perder de vista qué tiene la cuenta.
+  const rolesGestionables = useMemo(
+    () => ROLES_DISPONIBLES.filter(r => canManageRole(user?.role, r.value) || r.value === rolActual),
+    [user?.role, rolActual]
+  );
 
   // Agrega una asignacion (año/division) a la lista del preceptor
   let assignKeyCounter = useRef(0);
@@ -203,7 +218,7 @@ function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles
           apellido: form.apellido.trim(),
           email: form.email.trim(),
           dni: form.dni.trim() || null,
-          role: targetRole,
+          role: rolEnPantalla,
           _detalles: d,
           ...(form.password ? { password: form.password } : {}),
         };
@@ -276,20 +291,10 @@ function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles
 
     return (
     <>
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          key="preceptor-modal-backdrop"
-          initial={false} exit={{ opacity: 0 }}
-          transition={{ duration: 0.18, ease: "easeOut" }}
-          className="prec-modal-backdrop"
-        >
-          <motion.div
-            key="preceptor-modal"
-            initial={false}
-            exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            transition={{ duration: 0.24, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="prec-modal"
+      {montado && (
+        <div className={`prec-modal-backdrop sys-capa${cerrando ? " sys-cerrando" : ""}`}>
+          <div
+            className={`prec-modal sys-dialogo${cerrando ? " sys-cerrando" : ""}`}
             role="dialog" aria-modal="true"
           >
             {/* Top Accent */}
@@ -301,7 +306,7 @@ function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles
               <div className="prec-halo prec-halo-purple" />
 
               <div className="prec-modal-header">
-                <h3 className="prec-modal-title">{isEdit ? 'Editar ' : 'Agregar '}{targetRole === 'jefe_preceptores' ? 'jefe de preceptores' : 'preceptor'}</h3>
+                <h3 className="prec-modal-title">{isEdit ? 'Editar ' : 'Agregar '}{(ROLE_LABELS[rolEnPantalla] || rolEnPantalla).toLowerCase()}</h3>
                 <button
                   onClick={onClose}
                   className="prec-modal-close"
@@ -316,7 +321,7 @@ function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles
                   <div className="prec-inline-wrap">
                     <SimpleDropdown
                       placeholder="Seleccionar rol"
-                      options={ROLES_DISPONIBLES}
+                      options={rolesGestionables}
                       value={rolSeleccionado}
                       onChange={setRolSeleccionado}
                     />
@@ -419,7 +424,7 @@ function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles
             </div>
             <div className="prec-modal-footer">
               <div>
-                {preceptor && onDarDeBaja && (
+                {preceptor && onDarDeBaja && canManageRole(user?.role, rolEnPantalla) && (
                   <button onClick={() => onDarDeBaja(preceptor)} className="prec-btn-danger">Dar de baja</button>
                 )}
               </div>
@@ -428,10 +433,9 @@ function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles
                 <button onClick={handleSave} disabled={guardando} className="prec-btn-primary">{guardando ? 'Guardando…' : 'Guardar'}</button>
               </div>
             </div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
-    </AnimatePresence>
     {confirmModal}
     {avisoModal}
     {modalPwd}
@@ -441,11 +445,23 @@ function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles
 
 // Componente principal de la pagina de Preceptores
 
-const Preceptores = ({ role: targetRole = 'preceptor' }) => {
+// Titulos de la pantalla segun los roles que muestra.
+const TITULOS = {
+  preceptor: { breadcrumb: 'Preceptores', h1: 'Gestión de Preceptores', sub: 'Usuarios con rol de preceptor y sus asignaciones', plural: 'preceptores', vacio: 'No hay preceptores registrados.' },
+  jefe_preceptores: { breadcrumb: 'Jefes de Preceptores', h1: 'Gestión de Jefes de Preceptores', sub: 'Usuarios con rol de jefe de preceptores y sus asignaciones', plural: 'jefes', vacio: 'No hay jefes de preceptores registrados.' },
+  mixto: { breadcrumb: 'Jefe Prec. y Prosecretaría', h1: 'Gestión de Jefes de Preceptores y Prosecretaría', sub: 'Cuentas de jefe de preceptores y de prosecretaría, con sus asignaciones', plural: 'cuentas', vacio: 'No hay jefes de preceptores ni prosecretarías registrados.' },
+};
+
+const Preceptores = ({ role: targetRole = 'preceptor', roles = null }) => {
+  // roles: lista de roles que muestra la pantalla (ej: jefe + prosecretaría).
+  const listaRoles = useMemo(() => (roles && roles.length ? roles : [targetRole]), [roles, targetRole]);
+  const claveRoles = listaRoles.join(',');
+  const titulo = listaRoles.length > 1 ? TITULOS.mixto : (TITULOS[targetRole] || TITULOS.preceptor);
+
   const { user } = useAuth();
   const isPreceptorUser = user?.role === 'preceptor';
   const readonly = isPreceptorUser;
-  const cacheKey = `preceptores/${targetRole}`;
+  const cacheKey = `preceptores/${claveRoles}`;
 
   const [preceptores, setPreceptores] = useState(() => getCached(cacheKey) || []);
   const [loading, setLoading] = useState(() => !getCached(cacheKey));
@@ -453,9 +469,11 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todos');
   const [filtroCurso, setFiltroCurso] = useState('todos');
+  // Filtro por rol: solo tiene sentido cuando la pantalla muestra más de un rol.
+  const [filtroRol, setFiltroRol] = useState('todos');
   // Orden de la lista (se recuerda por pantalla y rol).
-  const [orden, setOrden] = useState(() => leerOrden(`preceptores-${targetRole}`));
-  useEffect(() => { guardarOrden(`preceptores-${targetRole}`, orden); }, [orden, targetRole]);
+  const [orden, setOrden] = useState(() => leerOrden(`preceptores-${claveRoles}`));
+  useEffect(() => { guardarOrden(`preceptores-${claveRoles}`, orden); }, [orden, claveRoles]);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [editando, setEditando] = useState(null);
   const [cursosDisponibles, setCursosDisponibles] = useState(() => getCached('preceptores/divisiones') || []);
@@ -465,10 +483,10 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
   const [confirmarContrasena, modalPwd] = usePasswordPrompt();
   const showToast = useToast();
 
-  // Carga la lista de usuarios con rol preceptor y sus asignaciones (1 sola consulta)
+  // Carga la lista de usuarios con los roles de la pantalla y sus asignaciones (1 sola consulta)
   const cargarPreceptores = async () => {
     try {
-      const result = await apiAdminUsersByRole(targetRole);
+      const result = await apiAdminUsersByRole(listaRoles);
       const userList = result?.data ?? result ?? [];
       const mapped = userList.map(u => ({ ...u, asignaciones: Array.isArray(u.asignaciones) ? u.asignaciones : [] }));
       setPreceptores(mapped);
@@ -490,10 +508,10 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
 
   const cachedCursos = getCached('preceptores/divisiones');
 
-  // Al cambiar el rol objetivo (preceptor <-> jefe_preceptores) forzamos recarga.
+  // Al cambiar los roles de la pantalla forzamos recarga.
   useEffect(() => {
     setLoading(true);
-  }, [targetRole]);
+  }, [claveRoles]);
 
   useEffect(() => {
     if (!loading) return;
@@ -516,17 +534,17 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
       }
       setLoading(false);
     })();
-  }, [loading, targetRole]);
+  }, [loading, claveRoles]);
 
   // Aunque haya copia guardada, al montar se pide lo fresco por detrás.
   useEffect(() => {
     if (getCached(cacheKey)) cargarPreceptores().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetRole]);
+  }, [claveRoles]);
 
   // Si otra persona tocó usuarios, esta pantalla se actualiza sola.
   useAvisoDeCambios(
-    `preceptores-${targetRole}`,
+    `preceptores-${claveRoles}`,
     ["usuarios"],
     () => cargarPreceptores()
   );
@@ -535,11 +553,13 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(true);
   const filtrosActivos =
     (filtroEstado !== 'todos' ? 1 : 0) +
+    (filtroRol !== 'todos' ? 1 : 0) +
     (filtroCurso && filtroCurso !== 'todos' ? 1 : 0) +
     (orden !== ORDEN_DEFAULT ? 1 : 0);
   const limpiarTodo = () => {
     setBusqueda('');
     setFiltroEstado('todos');
+    setFiltroRol('todos');
     setFiltroCurso('todos');
     setOrden(ORDEN_DEFAULT);
   };
@@ -551,6 +571,7 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
         const texto = `${p.name || ''} ${p.apellido || ''} ${p.email || ''}`;
         if (!coincideBusqueda(texto, q)) return false;
       }
+      if (filtroRol !== 'todos' && p.role !== filtroRol) return false;
       if (filtroEstado !== 'todos') {
         const activo = p.status === 'active';
         if (filtroEstado === 'activo' && !activo) return false;
@@ -562,7 +583,7 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
       return true;
     });
     return ordenarPersonas(lista, orden);
-  }, [preceptores, busqueda, filtroEstado, filtroCurso, orden]);
+  }, [preceptores, busqueda, filtroEstado, filtroRol, filtroCurso, orden]);
 
   // Elimina (da de baja) un preceptor solicitando un motivo con el modal de confirmacion
   const eliminarPreceptor = async (p) => {
@@ -606,11 +627,11 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
       <div className="prec-container">
         <div className="prec-header">
           <div>
-            <Breadcrumbs items={[{ label: targetRole === 'jefe_preceptores' ? 'Jefes de Preceptores' : 'Preceptores' }]} />
+            <Breadcrumbs items={[{ label: titulo.breadcrumb }]} />
             <h1 className="prec-title">
-              <Shield size={24} /> {targetRole === 'jefe_preceptores' ? 'Gestión de Jefes de Preceptores' : 'Gestión de Preceptores'}
+              <Shield size={24} /> {titulo.h1}
             </h1>
-            <p className="prec-subtitle">{targetRole === 'jefe_preceptores' ? 'Usuarios con rol de jefe de preceptores y sus asignaciones' : 'Usuarios con rol de preceptor y sus asignaciones'}</p>
+            <p className="prec-subtitle">{titulo.sub}</p>
           </div>
 
         </div>
@@ -653,6 +674,17 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
 
           {filtrosAbiertos && (
             <div className="tb-panel">
+              {listaRoles.length > 1 && (
+                <div className="tb-field">
+                  <span className="tb-field-label">Rol</span>
+                  <DropdownMini
+                    value={filtroRol} onChange={setFiltroRol}
+                    placeholder="Rol" width="100%"
+                    opciones={[{ value: 'todos', label: 'Todos' }, ...listaRoles.map(r => ({ value: r, label: ROLE_LABELS[r] || r }))]}
+                  />
+                </div>
+              )}
+
               <div className="tb-field">
                 <span className="tb-field-label">Estado</span>
                 <DropdownFiltroEstado
@@ -682,7 +714,7 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
           )}
 
           <div className="tb-meta">
-            <span>Mostrando <b>{filtrados.length}</b> de <b>{preceptores.length}</b> {targetRole === 'jefe_preceptores' ? 'jefes' : 'preceptores'}</span>
+            <span>Mostrando <b>{filtrados.length}</b> de <b>{preceptores.length}</b> {titulo.plural}</span>
             {(busqueda.trim() || filtrosActivos > 0) && (
               <button className="tb-limpiar" onClick={limpiarTodo}>
                 Limpiar todo
@@ -707,15 +739,27 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
           <div className="prec-table-scroll">
             <table className="prec-table">
               <tbody className="prec-tbody">
-                {filtrados.map((p) => (
+                {filtrados.map((p) => {
+                  const puedeGestionarFila = canManageRole(user?.role, p.role);
+                  return (
                   <tr key={p.id} className="prec-table-row">
                     <td className="prec-td">
                       <div className="prec-user-cell">
-                        <div className="prec-user-avatar">
+                        <Avatar
+                          id={p.id}
+                          version={p.avatar_version}
+                          titulo={`${p.name} ${p.apellido}`}
+                          className="prec-user-avatar"
+                        >
                           <UsersRound size={20} className="prec-user-avatar-icon" />
-                        </div>
+                        </Avatar>
                         <div className="prec-user-info">
-                          <h3 className="prec-user-name">{p.apellido}, {p.name}</h3>
+                          <h3 className="prec-user-name">
+                            {p.apellido}, {p.name}
+                            {listaRoles.length > 1 && (
+                              <span className="prec-role-tag">{ROLE_LABELS[p.role] || p.role}</span>
+                            )}
+                          </h3>
                           <p className="prec-user-email">{p.email}</p>
                           <div className="prec-asig-list">
                             {p.asignaciones?.length > 0 ? (
@@ -751,7 +795,11 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
                         >
                           <Eye size={20} />
                         </button>
-                        {!readonly ? (
+                        {readonly ? (
+                          <span className="prec-readonly-badge">
+                            <Lock size={12} /> Solo lectura
+                          </span>
+                        ) : puedeGestionarFila ? (
                           <button
                             onClick={() => abrirEdicion(p)}
                             className="prec-icon-btn prec-icon-btn-edit"
@@ -761,21 +809,20 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
                           </button>
                         ) : (
                           <span className="prec-readonly-badge">
-                            <Lock size={12} /> Solo lectura
+                            <Lock size={12} /> Rango insuficiente
                           </span>
                         )}
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {filtrados.length === 0 && (
                   <tr>
                     <td colSpan={2} className="prec-td prec-empty-row">
-                      {busqueda
+                      {busqueda || filtroRol !== 'todos'
                         ? 'No se encontraron usuarios con ese criterio.'
-                        : targetRole === 'jefe_preceptores'
-                        ? 'No hay jefes de preceptores registrados.'
-                        : 'No hay preceptores registrados.'}
+                        : titulo.vacio}
                     </td>
                   </tr>
                 )}
@@ -801,7 +848,7 @@ const Preceptores = ({ role: targetRole = 'preceptor' }) => {
         <PreceptorFicha
           open={!!mostrarFicha}
           onClose={() => setMostrarFicha(null)}
-          preceptor={mostrarFicha ? { ...mostrarFicha, rolLabel: targetRole === 'jefe_preceptores' ? 'Jefe de preceptores' : 'Preceptor' } : null}
+          preceptor={mostrarFicha ? { ...mostrarFicha, rolLabel: ROLE_LABELS[mostrarFicha.role] || mostrarFicha.role } : null}
         />
         {confirmModal}
         {avisoModal}

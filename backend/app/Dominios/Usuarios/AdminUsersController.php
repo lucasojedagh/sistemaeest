@@ -97,14 +97,20 @@ class AdminUsersController extends Controller
     public function index(Request $r)
     {
         // Rangos bajos (preceptor): sin DNI. Solo contacto, rol/estado y asignaciones.
-        $cols = ['id','name','apellido','email','dni','role','rol_solicitado','status','created_at','updated_at','last_login_at'];
+        $cols = ['id','name','apellido','email','dni','role','rol_solicitado','status','debe_cambiar_password','avatar','created_at','updated_at','last_login_at'];
         if (!$this->userCanSeeFullFicha($r)) {
             $cols = array_values(array_diff($cols, ['dni']));
         }
         $query = User::select($cols);
 
+        // ?role=preceptor  o  ?role=jefe_preceptores,prosecretaria (varios roles separados por coma)
         if ($r->has('role')) {
-            $query->where('role', $r->query('role'));
+            $roles = array_values(array_filter(array_map('trim', explode(',', (string) $r->query('role')))));
+            if (count($roles) === 1) {
+                $query->where('role', $roles[0]);
+            } elseif (count($roles) > 1) {
+                $query->whereIn('role', $roles);
+            }
         }
 
         if ($r->boolean('with_assignments')) {
@@ -129,7 +135,7 @@ class AdminUsersController extends Controller
     /** Usuarios pendientes de verificación */
     public function pending(Request $r)
     {
-        return User::select('id','name','apellido','email','dni','role','rol_solicitado','status','created_at')
+        return User::select('id','name','apellido','email','dni','role','rol_solicitado','status','avatar','created_at')
             ->where('status', 'pending')
             ->orderBy('created_at', 'asc')
             ->paginate(\App\Support\Paginacion::porPagina($r, 100, 200));
@@ -475,6 +481,77 @@ class AdminUsersController extends Controller
         return $u->only('id','name','apellido','email','dni','role','status','created_at','updated_at','last_login_at');
     }
 
+    // Clave temporal para la ventanilla: la recuperación por email no depende
+    // del correo del colegio (que no está configurado), así que dirección o
+    // secretaría generan una clave, se la entregan en mano al usuario, y la app
+    // lo obliga a poner una propia en el primer ingreso. La clave se muestra
+    // una sola vez en la respuesta y nunca se guarda ni se registra.
+    /** Generar clave temporal */
+    public function claveTemporal(Request $r, $id)
+    {
+        $u = User::findOrFail($id);
+        $this->assertCanManageUser($r, $u, true);
+
+        // Bloqueo explícito: una tecla mal dada dejaría afuera al propio
+        // operador, y con la cuenta administrativa no hay quien la recupere.
+        if ((int) $u->id === (int) $r->user()->id) {
+            abort(422, 'No te podés generar una clave temporal a vos mismo.');
+        }
+
+        if ($u->status !== 'active') {
+            abort(422, 'Esta cuenta todavía no está aprobada: no tiene clave que reemplazar.');
+        }
+
+        $clave = $this->claveTemporalAleatoria();
+        $u->password = Hash::make($clave);
+        $u->debe_cambiar_password = true;
+        $u->save();
+
+        // La clave vieja ya no sirve, así que ningún equipo puede seguir
+        // adentro con ella: se cierran todas las sesiones, incluida la propia.
+        foreach (ApiSesion::where('user_id', $u->id)->pluck('token') as $token) {
+            Cache::forget('auth_token_' . $token);
+        }
+        ApiSesion::cerrarTodas($u->id);
+        if ($u->api_token) {
+            Cache::forget('auth_token_' . $u->api_token);
+        }
+        User::where('id', $u->id)->update(['api_token' => null]);
+
+        // Sin old/new: la clave es un dato sensible que el historial nunca
+        // guarda, y el diff central descarta la contraseña siempre. Al no pasar
+        // valores, la entrada se registra igual con la acción realizada.
+        ActivityLogger::log(
+            $r,
+            'Generó clave temporal para ' . $u->email,
+            'user.clave_temporal',
+            'User',
+            $u->id
+        );
+
+        return [
+            'id'     => $u->id,
+            'nombre' => trim($u->name . ' ' . $u->apellido),
+            'email'  => $u->email,
+            'clave'  => $clave,
+        ];
+    }
+
+    // Cuatro sílabas y cuatro dígitos (≈36 bits): es provisoria y se cambia al
+    // entrar, así que prioriza poder dictarse por teléfono o a mano sin errores.
+    private function claveTemporalAleatoria(): string
+    {
+        $silabas = ['ba','be','bi','bo','bu','ca','ce','ci','co','cu','da','de','di','do','du',
+            'fa','fe','fi','fo','fu','ga','ge','gi','go','gu','ja','je','ji','jo','ju','ka','ke',
+            'la','le','li','lo','lu','ma','me','mi','mo','mu','na','ne','ni','no','nu','pa','pe',
+            'pi','po','pu','ra','re','ri','ro','ru','sa','se','si','so','su','ta','te','ti','to',
+            'tu','va','ve','vi','vo','vu','za','ze','zi','zo','zu'];
+        $pick = fn () => $silabas[random_int(0, count($silabas) - 1)];
+        $grupo = fn (int $n) => implode('', array_map(fn () => $pick(), range(1, $n)));
+
+        return $grupo(2) . '-' . $grupo(2) . '-' . str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+    }
+
     // Mueve la ficha de Profesor que estaba ligada a la cuenta al email nuevo.
     // Si ya existe otra ficha con ese email no se toca nada: es mejor dejar las
     // fichas como están que mezclar los datos de dos personas.
@@ -602,6 +679,13 @@ class AdminUsersController extends Controller
             } catch (\Throwable $e) {
                 report($e);
             }
+        }
+
+        // 7b. Su foto de perfil: el directorio entero, por si quedó más de una.
+        try {
+            Storage::disk('local')->deleteDirectory('avatars/' . (int) $u->id);
+        } catch (\Throwable $e) {
+            report($e);
         }
 
         // 8. Borrar el usuario (casca a user_anio_division y documentos).

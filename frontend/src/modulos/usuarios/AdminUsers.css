@@ -36,6 +36,97 @@
   gap: var(--sp-3);
 }
 
+/* Titulo + boton de volver, agrupados a la izquierda del header. */
+.admin-header-izq {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+/* Salir de "Roles y permisos" y volver a la lista de cuentas. */
+.admin-volver {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--indigo-800);
+  background-color: var(--indigo-50);
+  border: 1px solid var(--indigo-200);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--duration-150) var(--ease-in-out),
+    color var(--duration-150) var(--ease-in-out);
+}
+
+.admin-volver:hover {
+  background-color: var(--indigo-100);
+  color: var(--indigo-900);
+}
+
+.admin-volver svg {
+  transition: transform var(--duration-150) var(--ease-in-out);
+}
+
+.admin-volver:hover svg {
+  transform: translateX(-2px);
+}
+
+/* Acceso a la configuracion de roles: se ve como otra cosa, no como un filtro mas. */
+.admin-entrar-roles {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1-5) var(--sp-3);
+  color: var(--indigo-600);
+  background-color: #ffffff;
+  border: 1px solid var(--indigo-200);
+  border-radius: var(--radius-xl);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background-color var(--duration-150) var(--ease-in-out),
+    color var(--duration-150) var(--ease-in-out),
+    border-color var(--duration-150) var(--ease-in-out);
+}
+
+.admin-entrar-roles-texto {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.15;
+  font-weight: 600;
+  text-align: left;
+}
+
+.admin-entrar-roles-texto small {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--gray-500);
+}
+
+.admin-entrar-roles-flecha {
+  color: var(--indigo-400);
+  transition: transform var(--duration-150) var(--ease-in-out);
+}
+
+.admin-entrar-roles:hover {
+  background-color: var(--indigo-600);
+  border-color: var(--indigo-600);
+  color: #ffffff;
+}
+
+.admin-entrar-roles:hover .admin-entrar-roles-texto small {
+  color: var(--indigo-100);
+}
+
+.admin-entrar-roles:hover .admin-entrar-roles-flecha {
+  color: #ffffff;
+  transform: translateX(2px);
+}
+
 /* ---------- Botones ---------- */
 .admin-btn-primary {
   display: flex;
@@ -86,6 +177,9 @@
 }
 
 .admin-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
   padding: var(--sp-2-5) var(--sp-4);
   background-color: var(--gray-100);
   color: var(--gray-700);
@@ -134,11 +228,30 @@
 .admin-select-all {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1-5);
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2-5);
   font-size: var(--text-xs);
+  font-weight: 500;
   color: var(--gray-600);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-full);
+  background-color: #ffffff;
   cursor: pointer;
-  margin-right: var(--sp-2);
+  white-space: nowrap;
+  transition: border-color var(--duration-150) var(--ease-in-out),
+    color var(--duration-150) var(--ease-in-out);
+}
+
+.admin-select-all:hover {
+  border-color: var(--blue-300);
+  color: var(--gray-900);
+}
+
+.admin-select-all input {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--blue-600);
 }
 
 .admin-bulk-bar {
@@ -146,17 +259,15 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2) var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
-  margin-bottom: var(--sp-2);
-  background-color: #eef2ff;
-  border: 1px solid #c7d2fe;
-  border-radius: var(--radius-lg);
+  padding: var(--sp-2-5) var(--sp-4);
+  background-color: var(--indigo-50);
+  border-bottom: 1px solid var(--indigo-200);
 }
 
 .admin-bulk-count {
   font-size: var(--text-sm);
-  font-weight: 600;
-  color: #3730a3;
+  font-weight: 700;
+  color: var(--indigo-800);
 }
 
 .admin-bulk-actions {
@@ -186,6 +297,10 @@
   text-decoration: underline;
 }
 
+.admin-bulk-clear:hover {
+  color: var(--gray-900);
+}
+
 .admin-user-check {
   display: flex;
   align-items: center;
@@ -201,74 +316,119 @@
 }
 
 .admin-user-item-checked {
-  background-color: #eff6ff;
-  border-color: #bfdbfe;
+  background-color: var(--blue-50);
 }
 
-/* ---------- Tabs de estado ---------- */
-.admin-tabs-bar {
+/* ---------- Filtros de estado ---------- */
+.admin-filtros {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
   margin-bottom: var(--sp-4);
 }
 
-.admin-tabs-group {
-  display: flex;
+/* Un solo control: la pista gris agrupa las opciones y la activa se levanta
+   como una tarjeta, en lugar de cuatro botones sueltos compitiendo entre sí. */
+.admin-segmento {
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: var(--sp-2);
+  gap: var(--sp-1);
+  padding: 3px;
+  background-color: var(--gray-100);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-xl);
 }
 
-.admin-tab {
-  padding: var(--sp-2) var(--sp-4);
-  border-radius: var(--radius-xl);
+.admin-segmento-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  padding: var(--sp-1-5) var(--sp-3);
+  border-radius: var(--radius-lg);
   font-size: var(--text-sm);
   font-weight: 500;
-  transition: background-color var(--duration-150) var(--ease-in-out),
-    color var(--duration-150) var(--ease-in-out);
+  color: var(--gray-500);
+  background-color: transparent;
   cursor: pointer;
+  transition: background-color var(--duration-150) var(--ease-in-out),
+    color var(--duration-150) var(--ease-in-out),
+    box-shadow var(--duration-150) var(--ease-in-out);
 }
 
-.admin-tab-active-blue {
-  background-color: var(--blue-600);
-  color: #ffffff;
-}
-
-.admin-tab-active-yellow {
-  background-color: var(--yellow-500);
-  color: #ffffff;
-}
-
-.admin-tab-active-green {
-  background-color: var(--green-600);
-  color: #ffffff;
-}
-
-.admin-tab-active-red {
-  background-color: var(--red-600);
-  color: #ffffff;
-}
-
-.admin-tab-idle {
-  background-color: #ffffff;
+.admin-segmento-item:hover {
   color: var(--gray-700);
-  border: 1px solid;
+  background-color: rgba(255, 255, 255, 0.7);
 }
 
-.admin-tab-idle:hover {
-  background-color: var(--gray-100);
+.admin-segmento-activo {
+  color: var(--gray-900);
+  font-weight: 600;
+  background-color: #ffffff;
+  box-shadow: var(--shadow-sm);
 }
 
-.admin-tab-icon {
-  display: inline;
-  margin-right: var(--sp-1);
+.admin-segmento-cuenta {
+  min-width: 22px;
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  background-color: var(--gray-200);
+  color: var(--gray-600);
+}
+
+.admin-segmento-all.admin-segmento-activo {
+  color: var(--blue-700);
+}
+
+.admin-segmento-all.admin-segmento-activo .admin-segmento-cuenta {
+  background-color: var(--blue-100);
+  color: var(--blue-800);
+}
+
+.admin-segmento-pending.admin-segmento-activo {
+  color: var(--amber-700);
+}
+
+.admin-segmento-pending.admin-segmento-activo .admin-segmento-cuenta {
+  background-color: var(--amber-100);
+  color: var(--amber-800);
+}
+
+.admin-segmento-active.admin-segmento-activo {
+  color: var(--green-700);
+}
+
+.admin-segmento-active.admin-segmento-activo .admin-segmento-cuenta {
+  background-color: var(--green-100);
+  color: var(--green-800);
+}
+
+.admin-segmento-rejected.admin-segmento-activo {
+  color: var(--red-600);
+}
+
+.admin-segmento-rejected.admin-segmento-activo .admin-segmento-cuenta {
+  background-color: var(--red-100);
+  color: var(--red-700);
+}
+
+.admin-segmento-alerta {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background-color: var(--amber-500);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
 }
 
 /* ---------- Búsqueda ---------- */
 .admin-search-wrap {
   position: relative;
   margin-left: auto;
+  min-width: 0;
 }
 
 .admin-search-icon {
@@ -277,21 +437,48 @@
   top: 50%;
   transform: translateY(-50%);
   color: var(--gray-400);
+  pointer-events: none;
 }
 
 .admin-search-input {
-  padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-9);
-  width: 256px;
+  padding: var(--sp-2) var(--sp-9) var(--sp-2) var(--sp-9);
+  width: min(320px, 100%);
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-xl);
   font-size: var(--text-sm);
   background-color: #ffffff;
+  transition: border-color var(--duration-150) var(--ease-in-out),
+    box-shadow var(--duration-150) var(--ease-in-out);
 }
 
 .admin-search-input:focus {
   outline: 2px solid transparent;
   outline-offset: 2px;
-  box-shadow: 0 0 0 2px var(--blue-200);
+  border-color: var(--blue-300);
+  box-shadow: 0 0 0 3px var(--blue-100);
+}
+
+.admin-search-clear {
+  position: absolute;
+  right: var(--sp-2);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  color: var(--gray-500);
+  background-color: var(--gray-100);
+  cursor: pointer;
+  transition: background-color var(--duration-150) var(--ease-in-out),
+    color var(--duration-150) var(--ease-in-out);
+}
+
+.admin-search-clear:hover {
+  color: var(--gray-900);
+  background-color: var(--gray-200);
 }
 
 /* ---------- Layout de paneles ---------- */
@@ -311,34 +498,44 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* 210px = migas + titulo + filtros + padding de la pagina: con esto la lista
+     y la ficha scrollean adentro del panel en vez de estirar toda la pagina. */
+  max-height: calc(100dvh - 210px);
+  min-height: 320px;
 }
 
 .admin-panel-head {
-  padding: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--gray-100);
-  background-color: rgba(249, 250, 251, 0.5);
+  background-color: var(--gray-50);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--sp-3);
 }
 
 .admin-panel-head-lg {
   padding: var(--sp-4);
+  align-items: flex-start;
 }
 
 .admin-panel-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
   font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--gray-500);
 }
 
-.admin-clear-btn {
-  font-size: var(--text-xs);
-  color: var(--blue-600);
-  cursor: pointer;
+.admin-panel-count svg {
+  color: var(--gray-400);
 }
 
-.admin-clear-btn:hover {
-  text-decoration: underline;
+.admin-panel-count-extra {
+  font-weight: 400;
+  color: var(--gray-400);
 }
 
 .admin-panel-body {
@@ -361,29 +558,53 @@
 .admin-panel-empty {
   flex: 1 1 0%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-8) var(--sp-4);
   color: var(--gray-400);
   font-size: var(--text-sm);
+  text-align: center;
+}
+
+.admin-empty-orb {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  color: var(--indigo-500);
+  background-color: var(--indigo-50);
+  border: 1px solid var(--indigo-200);
+}
+
+.admin-panel-empty p {
+  max-width: 32ch;
+  margin: 0;
 }
 
 /* ---------- Item de usuario (lista) ---------- */
 .admin-user-item {
   display: flex;
   align-items: center;
-  padding: var(--sp-4);
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--gray-100);
   cursor: pointer;
-  transition: background-color var(--duration-150) var(--ease-in-out);
+  transition: background-color var(--duration-150) var(--ease-in-out),
+    box-shadow var(--duration-150) var(--ease-in-out);
 }
 
 .admin-user-item:hover {
-  background-color: rgba(239, 246, 255, 0.5);
+  background-color: var(--blue-50);
 }
 
+/* La cuenta abierta en el panel derecho se marca con una barra interna: a
+   diferencia del border-left, no corre todo el contenido 4px. */
 .admin-user-item-selected {
-  background-color: var(--blue-50);
-  border-left: 4px solid var(--blue-500);
+  background-color: var(--indigo-50);
+  box-shadow: inset 3px 0 0 var(--indigo-600);
 }
 
 .admin-user-item-head {
@@ -395,69 +616,181 @@
   gap: var(--sp-2);
 }
 
+.admin-user-item-texto {
+  min-width: 0;
+}
+
+.admin-user-item-fila1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
 .admin-user-item-name {
-  font-weight: 500;
+  font-size: var(--text-base);
+  font-weight: 600;
   color: var(--gray-900);
   overflow-wrap: anywhere;
 }
 
 .admin-user-item-email {
+  margin-top: var(--sp-0-5);
   font-size: var(--text-sm);
   color: var(--gray-500);
   overflow-wrap: anywhere;
 }
 
-.admin-user-item-tags {
+.admin-user-item-meta {
+  font-size: var(--text-xs);
+  color: var(--gray-400);
+}
+
+.admin-detalle-chips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-2);
-  margin-top: var(--sp-1);
+  gap: var(--sp-1-5);
+  margin-top: var(--sp-2);
 }
 
 .admin-user-item-actions {
   display: flex;
   flex-shrink: 0;
+  align-items: center;
   gap: var(--sp-1);
 }
 
-.admin-chip-role {
-  font-size: var(--text-xs);
-  padding: var(--sp-0-5) var(--sp-2);
+/* Avatar de iniciales: el degradado lo trae la clase admin-tono-* del propio tag. */
+.admin-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-full);
-  background-color: var(--gray-100);
-  color: var(--gray-600);
-  border: 1px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  background-image: var(--t-grad, linear-gradient(135deg, var(--gray-400), var(--gray-600)));
+  box-shadow: var(--shadow-sm);
 }
 
-.admin-chip-role-block {
-  display: inline-block;
-  margin-top: var(--sp-1);
+.admin-avatar-lg {
+  width: 44px;
+  height: 44px;
+  font-size: var(--text-sm);
 }
 
-.admin-chip-status {
-  font-size: var(--text-xs);
-  padding: var(--sp-0-5) var(--sp-2);
-  border-radius: var(--radius-full);
-  border: 1px solid;
+/* ---------- Tono por rol ---------- */
+/* Los tonos que no tienen toda la escala en variables.css usan el valor
+   Tailwind equivalente; así el avatar y el chip del rol siempre combinan. */
+.admin-tono-violet {
+  --t-100: var(--violet-100);
+  --t-200: var(--violet-200);
+  --t-700: var(--violet-700);
+  --t-grad: linear-gradient(135deg, #8b5cf6, var(--violet-800));
 }
 
-.admin-chip-request {
-  font-size: var(--text-xs);
-  padding: var(--sp-0-5) var(--sp-2);
-  border-radius: var(--radius-full);
-  background-color: #eef2ff;
-  color: #3730a3;
-  border: 1px solid #c7d2fe;
+.admin-tono-purple {
+  --t-100: var(--purple-100);
+  --t-200: #e9d5ff;
+  --t-700: var(--purple-600);
+  --t-grad: linear-gradient(135deg, var(--purple-500), #7e22ce);
+}
+
+.admin-tono-indigo {
+  --t-100: var(--indigo-100);
+  --t-200: var(--indigo-200);
+  --t-700: var(--indigo-800);
+  --t-grad: linear-gradient(135deg, var(--indigo-500), var(--indigo-600));
+}
+
+.admin-tono-teal {
+  --t-100: #ccfbf1;
+  --t-200: var(--teal-200);
+  --t-700: #0f766e;
+  --t-grad: linear-gradient(135deg, #2dd4bf, #0f766e);
+}
+
+.admin-tono-blue {
+  --t-100: var(--blue-100);
+  --t-200: var(--blue-200);
+  --t-700: var(--blue-700);
+  --t-grad: linear-gradient(135deg, var(--blue-500), var(--blue-700));
+}
+
+.admin-tono-amber {
+  --t-100: var(--amber-100);
+  --t-200: var(--amber-200);
+  --t-700: var(--amber-700);
+  --t-grad: linear-gradient(135deg, var(--amber-500), var(--amber-700));
+}
+
+.admin-tono-gray {
+  --t-100: var(--gray-100);
+  --t-200: var(--gray-200);
+  --t-700: var(--gray-600);
+  --t-grad: linear-gradient(135deg, var(--gray-400), var(--gray-600));
+}
+
+.admin-tono-slate {
+  --t-100: var(--slate-100);
+  --t-200: var(--slate-200);
+  --t-700: var(--slate-700);
+  --t-grad: linear-gradient(135deg, #94a3b8, var(--slate-600));
+}
+
+/* ---------- Chips ---------- */
+.admin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 1px var(--sp-2);
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
+.admin-chip-role {
+  background-color: var(--t-100, var(--gray-100));
+  color: var(--t-700, var(--gray-600));
+  border-color: var(--t-200, var(--gray-200));
+}
+
+.admin-chip-status {
+  background-color: var(--gray-100);
+  color: var(--gray-600);
+  border-color: var(--gray-200);
+}
+
+/* El punto se pinta con el color del chip: cada estado ya trae el suyo. */
+.admin-chip-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background-color: currentcolor;
+}
+
+.admin-chip-request {
+  background-color: var(--indigo-50);
+  color: var(--indigo-800);
+  border-color: var(--indigo-200);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .admin-request-box {
-  background-color: #eef2ff;
-  border: 1px solid #c7d2fe;
+  background-color: var(--indigo-50);
+  border: 1px solid var(--indigo-200);
   border-radius: var(--radius-lg);
   padding: var(--sp-3);
   margin-bottom: var(--sp-3);
@@ -467,7 +800,7 @@
   display: block;
   font-size: var(--text-xs);
   font-weight: 600;
-  color: #4338ca;
+  color: var(--indigo-800);
   margin-bottom: var(--sp-1);
 }
 
@@ -486,19 +819,23 @@
 }
 
 .admin-status-pending {
-  background-color: #fef9c3;
-  color: #854d0e;
-  border-color: #fef08a;
+  background-color: var(--amber-100);
+  color: var(--amber-800);
+  border-color: var(--amber-200);
 }
 
 .admin-status-rejected {
   background-color: var(--red-100);
-  color: #991b1b;
+  color: var(--red-700);
   border-color: var(--red-200);
 }
 
 .admin-icon-btn {
-  padding: var(--sp-1-5);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   border-radius: var(--radius-lg);
   transition: background-color var(--duration-150) var(--ease-in-out),
     color var(--duration-150) var(--ease-in-out);
@@ -533,6 +870,19 @@
   color: var(--red-600);
 }
 
+/* Eliminar es la acción rara de la fila: con mouse aparece al pasar por
+   encima o al llegar por teclado; en táctil queda siempre visible. */
+@media (hover: hover) {
+  .admin-icon-btn-delete {
+    opacity: 0;
+  }
+
+  .admin-user-item:hover .admin-icon-btn-delete,
+  .admin-user-item:focus-within .admin-icon-btn-delete {
+    opacity: 1;
+  }
+}
+
 .admin-icon-btn-remove {
   color: var(--red-500);
 }
@@ -542,14 +892,28 @@
 }
 
 /* ---------- Panel de detalle ---------- */
+.admin-detalle-top {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.admin-detalle-id {
+  min-width: 0;
+}
+
 .admin-panel-title {
-  font-weight: 600;
+  font-size: var(--text-lg);
+  font-weight: 700;
   color: var(--gray-900);
+  overflow-wrap: anywhere;
 }
 
 .admin-panel-subtitle {
   font-size: var(--text-sm);
   color: var(--gray-500);
+  overflow-wrap: anywhere;
 }
 
 .admin-section-title {
@@ -687,6 +1051,11 @@
   to   { opacity: 1; transform: none; }
 }
 
+@keyframes admin-modal-capa-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 .admin-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -696,6 +1065,7 @@
   justify-content: center;
   padding: var(--sp-4);
   background-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.3));
+  animation: admin-modal-capa-in 180ms ease-out backwards;
 }
 
 .admin-modal {
@@ -843,6 +1213,69 @@
     max-height: 70vh;
     max-height: 70dvh;
   }
+
+  /* El encabezado va a dos filas: titulo + volver arriba, acciones abajo. */
+  .admin-header {
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+  }
+
+  .admin-entrar-roles-texto small {
+    display: none;
+  }
+
+  /* La búsqueda pasa a ocupar la fila completa debajo de los filtros. */
+  .admin-search-wrap {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .admin-search-input {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-header-izq {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-2);
+  }
+
+  .admin-header-actions {
+    width: 100%;
+  }
+
+  .admin-entrar-roles {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  /* Filtros en grilla de a dos: cuatro botones en una fila no caben. */
+  .admin-segmento {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .admin-segmento-item {
+    justify-content: center;
+  }
+
+  .admin-user-item {
+    padding: var(--sp-3);
+    gap: var(--sp-2-5);
+  }
+
+  .admin-user-item-head {
+    flex-wrap: wrap;
+  }
+
+  .admin-avatar {
+    width: 32px;
+    height: 32px;
+  }
 }
 
 .admin-label {
@@ -881,4 +1314,90 @@
 
 .admin-input-toggle:hover {
   color: var(--gray-700);
+}
+/* ---------- Bloque "Rol de la cuenta": cambiar el rol sin salir de la lista ---------- */
+.admin-rol-caja {
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-3);
+  background-color: var(--indigo-50);
+  border: 1px solid var(--indigo-200);
+  border-radius: var(--radius-lg);
+}
+
+.admin-rol-fila {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+  margin-top: var(--sp-2);
+}
+
+.admin-input-role {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.admin-rol-nota {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--indigo-800);
+}
+
+/* ---------- Bloque "Acceso": clave temporal entregada en mano ---------- */
+.admin-acceso {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--gray-100);
+}
+
+.admin-section-title-mt {
+  margin-top: 0;
+}
+
+.admin-chip-clave {
+  background-color: var(--amber-50);
+  color: var(--amber-800);
+  border-color: var(--amber-200);
+  font-weight: 500;
+}
+
+.admin-acceso-alerta {
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--text-xs);
+  color: var(--amber-800);
+  background-color: var(--amber-50);
+  border: 1px solid var(--amber-200);
+  border-radius: var(--radius-lg);
+}
+
+.admin-clave-caja {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-3);
+  background-color: var(--gray-50);
+  border: 1px dashed var(--gray-300);
+  border-radius: var(--radius-lg);
+}
+
+.admin-clave-valor {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-base);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--gray-900);
+  user-select: all;
+}
+
+.admin-clave-nota {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--gray-500);
 }

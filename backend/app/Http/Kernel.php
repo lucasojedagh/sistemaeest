@@ -41,6 +41,7 @@ class Kernel extends HttpKernel
         ],
 
         'api' => [
+            \App\Http\Middleware\FuerzaJsonApi::class,
             \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\LogSlowRequests::class,
@@ -68,6 +69,7 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'auth.token' => \App\Http\Middleware\AuthToken::class,
         'role' => \App\Http\Middleware\EnsureRole::class,
+        'permiso' => \App\Http\Middleware\EnsurePermiso::class,
     ];
 }
 
