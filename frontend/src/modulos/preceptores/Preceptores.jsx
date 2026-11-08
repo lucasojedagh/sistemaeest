@@ -9,12 +9,14 @@ import useAviso from '../../compartido/componentes/modals/useAviso';
 import usePasswordPrompt from '../../compartido/componentes/modals/usePasswordPrompt';
 import { apiAdminUsersByRole, apiAdminCreateUser, apiAdminUpdateUser, apiAdminDeleteUser, apiAdminGetAssignments, apiAdminSaveAssignments } from '../../compartido/api/auth';
 import Breadcrumbs from '../../compartido/componentes/Common/Breadcrumbs';
+import ErrorState from '../../compartido/componentes/Common/ErrorState';
 import Avatar from '../../compartido/componentes/Common/Avatar';
 import PreceptorFicha from './PreceptorFicha';
 import DropdownFiltroAnios from '../alumnos/DropdownFiltroAnios';
 import DropdownFiltroEstado from '../alumnos/DropdownFiltroEstado';
 import { useAuth } from '../auth/AuthContext';
-import { ROLE_LABELS, canManageRole } from '../auth/roles';
+import { ROLE_LABELS, canManageRole, esRolAsignable } from '../auth/roles';
+import { accionHabilitada } from '../../compartido/lib/permisos';
 import { getCached, setCache } from '../../compartido/lib/pageCache';
 import { cargarDivisiones } from '../../compartido/lib/divisiones';
 import { apiAdminUpdateUserRole } from '../../compartido/api/auth';
@@ -109,6 +111,8 @@ const statusLabels = {
 function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles, targetRole = 'preceptor', onDarDeBaja }) {
   const { user } = useAuth();
   const isEdit = preceptor?.id;
+  // Cambiar el rol de una cuenta es su propia casilla del catálogo.
+  const puedeCambiarRol = accionHabilitada(user, 'usuarios.rol', canManageRole(user?.role, 'preceptor'));
   // En una pantalla que mezcla roles (jefe + prosecretaría) cada cuenta muestra
   // su propio rol, no el rol del filtro de la página.
   const rolEnPantalla = isEdit ? (preceptor.role || targetRole) : targetRole;
@@ -161,10 +165,11 @@ function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles
   // Roles que NO requieren asignaciones de cursos: ocultamos la seccion.
   const ocultarAsignaciones = ROLES_SIN_ASIGNACIONES.includes(isEdit ? rolSeleccionado : rolEnPantalla);
 
-  // Solo se pueden asignar roles que el usuario logueado puede gestionar; el rol
-  // actual siempre queda visible para no perder de vista qué tiene la cuenta.
+  // Roles que NO se pueden dar: el de Administrador es único. Solo se muestran
+  // los que el usuario logueado puede gestionar; el rol actual siempre queda
+  // visible para no perder de vista qué tiene la cuenta.
   const rolesGestionables = useMemo(
-    () => ROLES_DISPONIBLES.filter(r => canManageRole(user?.role, r.value) || r.value === rolActual),
+    () => ROLES_DISPONIBLES.filter(r => esRolAsignable(r.value) && (canManageRole(user?.role, r.value) || r.value === rolActual)),
     [user?.role, rolActual]
   );
 
@@ -315,7 +320,7 @@ function PreceptorModal({ visible, onClose, preceptor, onSave, cursosDisponibles
             </div>
             <div className="prec-modal-body">
               {/* Tarjeta: Rol (solo en edicion, para quienes pueden gestionar) */}
-              {isEdit && (
+              {isEdit && puedeCambiarRol && (
                 <div className="prec-card">
                   <label className="prec-label-strong">Rol actual</label>
                   <div className="prec-inline-wrap">
@@ -459,8 +464,11 @@ const Preceptores = ({ role: targetRole = 'preceptor', roles = null }) => {
   const titulo = listaRoles.length > 1 ? TITULOS.mixto : (TITULOS[targetRole] || TITULOS.preceptor);
 
   const { user } = useAuth();
-  const isPreceptorUser = user?.role === 'preceptor';
-  const readonly = isPreceptorUser;
+  // Editar una cuenta es la casilla "Editar usuarios": con la lista del rol
+  // guardada manda ella; sin lista decide el rango que ya podía gestionarlas.
+  const rangoGestionaCuentas = canManageRole(user?.role, 'preceptor');
+  const readonly = !accionHabilitada(user, 'usuarios.editar', rangoGestionaCuentas);
+  const puedeEliminarCuenta = accionHabilitada(user, 'usuarios.eliminar', rangoGestionaCuentas);
   const cacheKey = `preceptores/${claveRoles}`;
 
   const [preceptores, setPreceptores] = useState(() => getCached(cacheKey) || []);
@@ -728,10 +736,7 @@ const Preceptores = ({ role: targetRole = 'preceptor', roles = null }) => {
         ) : (
           <>
             {errorCarga && (
-              <div className="prec-error-carga" role="alert">
-                <span>{errorCarga}</span>
-                <button type="button" onClick={reintentarCarga}>Reintentar</button>
-              </div>
+              <ErrorState mensaje={errorCarga} onReintentar={reintentarCarga} compact />
             )}
         <div className="prec-table-wrap">
           <div className="prec-fade-top" />
@@ -817,7 +822,7 @@ const Preceptores = ({ role: targetRole = 'preceptor', roles = null }) => {
                   </tr>
                   );
                 })}
-                {filtrados.length === 0 && (
+                {filtrados.length === 0 && !errorCarga && (
                   <tr>
                     <td colSpan={2} className="prec-td prec-empty-row">
                       {busqueda || filtroRol !== 'todos'
@@ -841,7 +846,7 @@ const Preceptores = ({ role: targetRole = 'preceptor', roles = null }) => {
           onSave={() => cargarPreceptores().catch(() => {})}
           cursosDisponibles={cursosDisponibles}
           targetRole={targetRole}
-          onDarDeBaja={eliminarPreceptor}
+          onDarDeBaja={puedeEliminarCuenta ? eliminarPreceptor : undefined}
         />
         )}
 

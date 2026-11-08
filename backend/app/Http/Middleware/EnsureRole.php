@@ -45,7 +45,9 @@ class EnsureRole
             }
         }
         if ($min === null || RoleHierarchy::level($user->role) < $min) {
-            return response()->json(['message' => 'Forbidden'], 403);
+            // La pantalla muestra este texto en el toast: "Forbidden" en inglés
+            // no le dice nada a un preceptor, y sí le dice que no puede.
+            return response()->json(['message' => 'Tu rol no llega al rango que pide esta acción.'], 403);
         }
 
         return $next($request);

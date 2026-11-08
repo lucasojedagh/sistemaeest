@@ -2,7 +2,7 @@
 // FILE: src/components/Alumnos/AlumnoFicha.jsx
 // ===============================
 import React, { useEffect, useState } from "react";
-import FichaLayout, { field, valBig, card, chipBlue, chipGreen, tag } from "../../compartido/componentes/Common/FichaLayout";
+import FichaLayout, { field, valBig, card, chipBlue, chipGreen, tag, initials } from "../../compartido/componentes/Common/FichaLayout";
 import { cursoLabel, parseCurso } from "../../compartido/lib/cursos";
 import { apiGet } from "../../compartido/lib/api";
 import "./AlumnoFicha.css";
@@ -209,7 +209,7 @@ export default function AlumnoFicha({ open, onClose, alumno }) {
 
         <div className="ficha-alumno-chips-row">
           {estado && (
-            <span className={`${tag} ficha-alumno-chip ${estado === "Egresado" ? "ficha-alumno-chip-egresado" : "ficha-alumno-chip-activo"}`}>
+            <span className={`${tag} ficha-alumno-chip ${estado === "Inactivo" ? "ficha-alumno-chip-inactivo" : estado === "Egresado" ? "ficha-alumno-chip-egresado" : "ficha-alumno-chip-activo"}`}>
               {estado}
             </span>
           )}
@@ -346,7 +346,13 @@ export default function AlumnoFicha({ open, onClose, alumno }) {
 
   if (open !== undefined) {
     return (
-      <FichaLayout open={open} onClose={onClose} titulo={nombreCompleto || "Ficha del Alumno"} subtitulo={curso}>
+      <FichaLayout
+        open={open}
+        onClose={onClose}
+        titulo={nombreCompleto || "Ficha del Alumno"}
+        subtitulo={curso}
+        avatarFallback={initials(a?.nombre, a?.apellido)}
+      >
         {contenido}
       </FichaLayout>
     );

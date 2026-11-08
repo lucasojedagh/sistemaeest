@@ -1,21 +1,20 @@
-// Revisión de cobertura: los errores que la base de datos no rechaza.
-// Un curso puede tener materias, horario y alumnos y aun así nadie poder
-// pasarle la lista porque ninguna cuenta lo tiene asignado. El backend cruza
-// cursos, horarios, fichas de profesor, cuentas y la matriz de alcance de cada
-// rol, y devuelve sólo los huecos reales. Esta tarjeta los lista y explica cómo
-// cerrarlos.
-import React, { useCallback, useEffect, useState } from "react";
+// Revisión del sistema: la lista de cosas que hay que atender.
+// Muestra sólo los problemas que la base de datos no rechaza por sí sola. El
+// backend (/cobertura) redacta cada tema en palabras de la escuela: qué está
+// pasando, cómo se arregla y en qué pantalla se arregla. Acá se ordenan por
+// prioridad y se dibujan.
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, RefreshCw, ShieldCheck, ChevronDown, Users2, Stethoscope } from "lucide-react";
+import { ArrowRight, ClipboardList, ListChecks, RefreshCw, ShieldCheck, ChevronDown } from "lucide-react";
 import { apiGet } from "../../compartido/lib/api";
 import { useAuth } from "../auth/AuthContext";
-import { puede } from "../../compartido/lib/permisos";
+import { accionHabilitada } from "../../compartido/lib/permisos";
 import { esGestion, rolLabel } from "../auth/roles";
 import "./RevisionSistema.css";
 
-// Columnas de cada problema: [clave del item, rótulo]. Si una clave no está acá
-// se dibujan todas las propiedades del item, para que un chequeo nuevo del
-// backend no quede vacío.
+// Columnas de cada tema: [clave del item, rótulo]. Si una clave no está acá se
+// dibujan todas las propiedades del item, para que un chequeo nuevo del backend
+// no quede vacío.
 const COLUMNAS = {
   cursos_sin_cobertura: [["curso", "Curso"], ["alumnos", "Alumnos"], ["celdas", "Franjas de horario"]],
   cursos_sin_responsable: [["curso", "Curso"], ["alumnos", "Alumnos"]],
@@ -29,17 +28,16 @@ const COLUMNAS = {
   asistencias_fuera_de_curso: [["curso", "Curso"], ["clase", "Clase"], ["fecha", "Fecha"], ["marcas", "Marcas fuera del curso"]],
 };
 
-// Dónde se corrige cada problema (null = no hay una pantalla directa).
-const IR_A = {
-  cuentas_sin_curso: { ruta: "/admin/usuarios", texto: "Asignar cursos a las cuentas" },
-  docentes_sin_cuenta: { ruta: "/admin/usuarios", texto: "Crear la cuenta del docente" },
-  horario_fuera_de_ficha: { ruta: "/profesores", texto: "Completar la ficha del profesor" },
-  celdas_sin_docente: { ruta: "/cursos", texto: "Completar el horario" },
-  cursos_fuera_del_catalogo: { ruta: "/cursos", texto: "Dar de alta la división" },
-  alumnos_sin_curso: { ruta: "/cursos", texto: "Crear el curso" },
+// La prioridad dicha en términos de trabajo, no de severidad.
+const NIVEL_LABEL = {
+  alto: "Traba la carga de datos",
+  medio: "Puede dar errores",
+  bajo: "Para tenerlo ordenado",
 };
+const NIVEL_ORDEN = { alto: 0, medio: 1, bajo: 2 };
 
-const NIVEL_LABEL = { alto: "Prioridad alta", medio: "Para revisar", bajo: "Informativo" };
+const porPrioridad = (lista) =>
+  [...lista].sort((a, b) => (NIVEL_ORDEN[a.nivel] ?? 9) - (NIVEL_ORDEN[b.nivel] ?? 9));
 
 function celdasDelItem(item, claves) {
   return claves.map(([k]) => {
@@ -57,7 +55,7 @@ export default function RevisionSistema() {
   const [estado, setEstado] = useState("idle"); // idle | cargando | listo | error
   const [abierto, setAbierto] = useState(null);
 
-  const permitido = !!user && esGestion(user.role) && puede(user, "sistema.cobertura");
+  const permitido = accionHabilitada(user, "sistema.cobertura", !!user && esGestion(user.role));
 
   const cargar = useCallback(async () => {
     if (!permitido) return;
@@ -65,6 +63,7 @@ export default function RevisionSistema() {
     try {
       const res = await apiGet("/cobertura");
       setData(res);
+      setAbierto(porPrioridad(res?.problemas || [])[0]?.clave ?? null);
       setEstado("listo");
     } catch {
       setEstado("error");
@@ -75,69 +74,76 @@ export default function RevisionSistema() {
     cargar();
   }, [cargar]);
 
+  const temas = useMemo(() => porPrioridad(data?.problemas || []), [data]);
+
   if (!permitido) return null;
 
-  const problemas = data?.problemas || [];
-  const porNivel = problemas.reduce((acc, p) => {
-    acc[p.nivel] = (acc[p.nivel] || 0) + p.items.length;
-    return acc;
-  }, {});
+  const total = data?.total || 0;
+  const primero = temas[0];
 
   return (
     <section className="rev-card">
       <header className="rev-head">
-        <div className={`rev-icon ${data && data.total > 0 ? "rev-icon-alerta" : "rev-icon-ok"}`}>
-          {data && data.total > 0 ? <AlertTriangle size={18} /> : <ShieldCheck size={18} />}
+        <div className={`rev-icon ${total > 0 ? "rev-icon-tareas" : "rev-icon-ok"}`}>
+          {total > 0 ? <ListChecks size={18} /> : <ShieldCheck size={18} />}
         </div>
         <div className="rev-titulos">
           <h3 className="rev-titulo">Revisión del sistema</h3>
           <p className="rev-subtitulo">
-            {estado === "cargando" && "Cruzando cursos, horarios, fichas y cuentas…"}
-            {estado === "error" && "No se pudo revisar el sistema. Recargá la página o volvé a intentar."}
-            {estado === "listo" && (data.total === 0
-              ? "No encontramos huecos: todos los cursos tienen alguien que pueda trabajarlos."
-              : `${data.total} ${data.total === 1 ? "situación" : "situaciones"} que la base de datos no rechaza pero dejan datos sin poder cargarse.`)}
+            {estado === "cargando" && "Cruzando cursos, horarios, fichas de docentes y cuentas…"}
+            {estado === "error" && "No se pudo hacer la revisión. Tocá Revisar para intentar de nuevo."}
+            {estado === "listo" && total === 0 && (
+              "Todo en orden: no hay cursos, cuentas ni horarios trabados."
+            )}
+            {estado === "listo" && total > 0 && (
+              <>
+                <b>{temas.length} {temas.length === 1 ? "tema" : "temas"} para atender</b>
+                {` (${total} ${total === 1 ? "caso" : "casos"}). `}
+                {primero && <>Empezá por: “{primero.titulo}”.</>}
+              </>
+            )}
           </p>
         </div>
         <div className="rev-acciones">
-          {estado === "listo" && problemas.length > 0 && (
-            <div className="rev-chips">
-              {["alto", "medio", "bajo"].filter((n) => porNivel[n]).map((n) => (
-                <span key={n} className={`rev-chip rev-chip-${n}`}>
-                  {porNivel[n]} · {NIVEL_LABEL[n]}
-                </span>
-              ))}
-            </div>
-          )}
           <button type="button" className="rev-btn" onClick={cargar} disabled={estado === "cargando"} title="Volver a revisar">
             <RefreshCw size={15} className={estado === "cargando" ? "rev-girando" : undefined} />
-            <span>Revisar</span>
+            <span>{estado === "cargando" ? "Revisando…" : "Revisar"}</span>
           </button>
         </div>
       </header>
 
-      {estado === "listo" && problemas.length > 0 && (
-        <div className="rev-lista">
-          {problemas.map((p) => {
+      {estado === "listo" && temas.length > 0 && (
+        <ol className="rev-lista">
+          {temas.map((p, i) => {
             const claves = COLUMNAS[p.clave] || Object.keys(p.items[0] || {}).map((k) => [k, k]);
-            const dest = IR_A[p.clave];
             const abiertoAqui = abierto === p.clave;
             return (
-              <div key={p.clave} className={`rev-bloque rev-bloque-${p.nivel}`}>
-                <button
-                  type="button"
-                  className="rev-bloque-head"
-                  onClick={() => setAbierto(abiertoAqui ? null : p.clave)}
-                  aria-expanded={abiertoAqui}
-                >
-                  <ChevronDown size={16} className={`rev-flecha ${abiertoAqui ? "rev-flecha-abierta" : ""}`} />
-                  <span className="rev-bloque-titulo">{p.titulo}</span>
-                  <span className="rev-bloque-cantidad">{p.items.length}</span>
-                </button>
+              <li key={p.clave} className={`rev-tema rev-tema-${p.nivel}`}>
+                <div className="rev-tema-cabecera">
+                  <button
+                    type="button"
+                    className="rev-tema-titulo"
+                    onClick={() => setAbierto(abiertoAqui ? null : p.clave)}
+                    aria-expanded={abiertoAqui}
+                  >
+                    <ChevronDown size={16} className={`rev-flecha ${abiertoAqui ? "rev-flecha-abierta" : ""}`} />
+                    <span className="rev-tema-num">{i + 1}</span>
+                    <span className="rev-tema-nombre">{p.titulo}</span>
+                    <span className="rev-tema-cantidad">{p.items.length} {p.items.length === 1 ? "caso" : "casos"}</span>
+                    <span className={`rev-nivel rev-nivel-${p.nivel}`}>{NIVEL_LABEL[p.nivel] || "Para revisar"}</span>
+                  </button>
+                  {p.ir_a && (
+                    <button type="button" className="rev-ir" onClick={() => navigate(p.ir_a)}>
+                      {p.boton || "Ir a resolverlo"}
+                      <ArrowRight size={15} />
+                    </button>
+                  )}
+                </div>
 
                 {abiertoAqui && (
-                  <div className="rev-bloque-cuerpo">
-                    <p className="rev-bloque-detalle">{p.detalle}</p>
+                  <div className="rev-tema-cuerpo">
+                    <p className="rev-parrafo"><b>Qué está pasando.</b> {p.que_pasa}</p>
+                    <p className="rev-parrafo"><b>Cómo se arregla.</b> {p.arreglo}</p>
                     <div className="rev-tabla-envoltura">
                       <table className="rev-tabla">
                         <thead>
@@ -146,26 +152,27 @@ export default function RevisionSistema() {
                           </tr>
                         </thead>
                         <tbody>
-                          {p.items.map((item, i) => (
-                            <tr key={i}>
-                              {celdasDelItem(item, claves).map((celda, j) => <td key={j}>{celda}</td>)}
+                          {p.items.map((item, j) => (
+                            <tr key={j}>
+                              {celdasDelItem(item, claves).map((celda, c) => <td key={c}>{celda}</td>)}
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                    {dest && (
-                      <button type="button" className="rev-enlace" onClick={() => navigate(dest.ruta)}>
-                        {p.clave === "docentes_sin_cuenta" ? <Stethoscope size={15} /> : <Users2 size={15} />}
-                        {dest.texto}
-                      </button>
-                    )}
                   </div>
                 )}
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ol>
+      )}
+
+      {estado === "listo" && total === 0 && (
+        <p className="rev-vacio">
+          <ClipboardList size={15} />
+          Cursos, horarios, fichas de docentes y cuentas están consistentes. Si cambiás algo, tocá Revisar.
+        </p>
       )}
 
       {data?.generado && estado === "listo" && (

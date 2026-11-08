@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Award, BarChart3, Loader, TrendingDown } from "lucide-react";
 import { asistenciaApi } from "../../compartido/api/asistencia";
 import { fmtPct, cursoLabel } from "../../compartido/lib/asistencia";
 import CoursePicker from "./CoursePicker";
+import { mensajeAmable } from "../../compartido/lib/errores";
 import "./EstadisticasAsistencia.css";
 
 export default function EstadisticasAsistencia({ maps }) {
@@ -10,18 +11,30 @@ export default function EstadisticasAsistencia({ maps }) {
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // La respuesta que llega de un curso o año anterior se descarta.
+  const version = useRef(0);
 
   useEffect(() => {
+    const mia = ++version.current;
     setLoading(true);
+    setError(null);
     asistenciaApi
       .estadisticas({
         anio: curso.anio,
         division: curso.division !== "*" ? curso.division : "",
         year,
       })
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then((d) => { if (mia === version.current) setData(d); })
+      .catch((e) => {
+        // Sin esto la pantalla quedaba en blanco y no se sabía si fue un error
+        // o si realmente no hay datos.
+        if (mia !== version.current) return;
+        setError(mensajeAmable(e, "No se pudieron calcular las estadísticas. Revisá tu conexión."));
+        setData(null);
+      })
+      .finally(() => { if (mia === version.current) setLoading(false); });
   }, [curso?.anio, curso?.division, year]);
 
   const t = data?.totales;
@@ -41,6 +54,11 @@ export default function EstadisticasAsistencia({ maps }) {
             className="estad-year-input"
           />
         </div>
+        <p className="estad-criterio">
+          Se cuenta cada marca de asistencia: llegar tarde suma como presencia y el
+          justificativo suma como falta (aunque tenga motivo aprobado). Sin curso
+          elegido, las cifras son de todos los cursos que ves.
+        </p>
       </div>
 
       {loading && (
@@ -49,16 +67,21 @@ export default function EstadisticasAsistencia({ maps }) {
         </div>
       )}
 
+      {!loading && error && (
+        <div className="estad-error">{error}</div>
+      )}
+
       {!loading && data && (
         <>
           <div className="estad-totales-grid">
             {[
-              ["Clases", t?.clases ?? 0],
-              ["Asistencias", t?.asistencias ?? 0],
+              ["% de asistencia", fmtPct(t?.porcentaje)],
+              ["Clases relevadas", t?.clases ?? 0],
+              ["Marcas de asistencia", t?.asistencias ?? 0],
               ["Presentes", t?.presente ?? 0],
               ["Ausentes", t?.ausente ?? 0],
-              ["Justificadas", t?.justificado ?? 0],
-              ["Tardanzas", t?.tarde ?? 0],
+              ["Con justificativo", t?.justificado ?? 0],
+              ["Con tardanza", t?.tarde ?? 0],
             ].map(([label, val]) => (
               <div key={label} className="estad-total-card">
                 <div className="estad-total-label">{label}</div>
@@ -66,6 +89,13 @@ export default function EstadisticasAsistencia({ maps }) {
               </div>
             ))}
           </div>
+
+          {!t?.asistencias && (
+            <div className="estad-sin-datos">
+              Todavía no hay ninguna marca de asistencia cargada en {year || "ese año"}.
+              Pasá la lista en la pestaña "Pasar lista" y volvé acá: los números se calculan solos.
+            </div>
+          )}
 
           {data.evolucion_mensual?.length > 0 && (
             <div className="estad-evolucion-card">
@@ -92,14 +122,36 @@ export default function EstadisticasAsistencia({ maps }) {
           )}
 
           <div className="estad-rank-grid">
-            <Ranking title="Mayor asistencia" icon={Award} rows={data.mejores_alumnos || []} empty="Sin datos" />
-            <Ranking title="Menor asistencia" icon={TrendingDown} rows={data.peores_alumnos || []} empty="Sin datos" danger />
+            <Ranking
+              title="Alumnos con mejor asistencia"
+              icon={Award}
+              rows={(data.mejores_alumnos || []).map((a) => ({ ...a, sub: `${a.curso || "—"} · ${a.registros} marcas` }))}
+              empty="Sin datos en el año seleccionado."
+            />
+            <Ranking
+              title="Alumnos con menor asistencia"
+              icon={TrendingDown}
+              rows={(data.peores_alumnos || []).map((a) => ({ ...a, sub: `${a.registros} marcas · ${a.faltas} faltas` }))}
+              empty="Sin datos en el año seleccionado."
+              danger
+            />
           </div>
 
-          {data.mejores_cursos?.length > 0 && (
+          {(data.mejores_cursos?.length > 0 || data.peores_cursos?.length > 0) && (
             <div className="estad-rank-grid">
-              <Ranking title="Cursos con mejor asistencia (todos)" icon={Award} rows={(data.mejores_cursos || []).map((c) => ({ label: cursoLabel(c.anio, c.division), porcentaje: c.porcentaje }))} empty="Sin datos" />
-              <Ranking title="Cursos con menor asistencia (todos)" icon={TrendingDown} rows={(data.peores_cursos || []).map((c) => ({ label: cursoLabel(c.anio, c.division), porcentaje: c.porcentaje }))} empty="Sin datos" danger />
+              <Ranking
+                title="Cursos con mejor asistencia (todos los que ves)"
+                icon={Award}
+                rows={(data.mejores_cursos || []).map((c) => ({ alumno_id: `${c.anio}-${c.division}`, label: cursoLabel(c.anio, c.division), porcentaje: c.porcentaje, sub: `${c.registros} marcas` }))}
+                empty="Sin datos en el año seleccionado."
+              />
+              <Ranking
+                title="Cursos con menor asistencia (todos los que ves)"
+                icon={TrendingDown}
+                rows={(data.peores_cursos || []).map((c) => ({ alumno_id: `${c.anio}-${c.division}`, label: cursoLabel(c.anio, c.division), porcentaje: c.porcentaje, sub: `${c.registros} marcas` }))}
+                empty="Sin datos en el año seleccionado."
+                danger
+              />
             </div>
           )}
         </>
@@ -124,7 +176,10 @@ function Ranking({ title, icon, rows, empty, danger = false }) {
               <span className={`estad-rank-pos ${i < 3 ? "estad-rank-pos-top" : "estad-rank-pos-rest"}`}>
                 {i + 1}
               </span>
-              <span className="estad-rank-name">{r.label}</span>
+              <span className="estad-rank-nombre">
+                <span className="estad-rank-name">{r.label}</span>
+                {r.sub ? <span className="estad-rank-sub">{r.sub}</span> : null}
+              </span>
               <span className={`estad-rank-pct ${danger ? "estad-rank-pct-danger" : "estad-rank-pct-success"}`}>{fmtPct(r.porcentaje)}</span>
             </div>
           ))}

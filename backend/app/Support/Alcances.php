@@ -114,12 +114,13 @@ class Alcances
             'excepciones' => ['documentos' => self::TODO],
         ],
         // El profesor trabaja dentro de sus cursos: no ve ni toca nada fuera de ellos.
+        // La asistencia la ve (sus cursos) pero no la toma: el rango 1 nace con
+        // 'editar' en 'ninguno' y dirección lo habilita desde Roles y permisos.
         RoleHierarchy::PROFESOR          => [
             'ver' => self::ASIGNADO,
             'editar' => self::NADA,
             'excepciones' => [
                 'calificaciones' => self::ASIGNADO,
-                'asistencia' => self::ASIGNADO,
             ],
             'ver_excepciones' => ['documentos' => self::TODO],
         ],
@@ -132,8 +133,10 @@ class Alcances
         4 => ['ver' => self::TODO, 'editar' => self::TODO],
         3 => ['ver' => self::TODO, 'editar' => self::TODO],
         2 => ['ver' => self::TODO, 'editar' => self::ASIGNADO, 'excepciones' => ['documentos' => self::TODO]],
+        // Rango 1 = lo mismo del profesor: ve sus cursos, no modifica nada salvo
+        // las notas. La asistencia se ve pero no se toma (ver test_de_par).
         1 => ['ver' => self::ASIGNADO, 'editar' => self::NADA,
-              'excepciones' => ['calificaciones' => self::ASIGNADO, 'asistencia' => self::ASIGNADO],
+              'excepciones' => ['calificaciones' => self::ASIGNADO],
               'ver_excepciones' => ['documentos' => self::TODO]],
         0 => ['ver' => self::NADA, 'editar' => self::NADA],
     ];
@@ -155,8 +158,23 @@ class Alcances
     /** Mapa área => {ver, editar} para un rol sin configuración guardada. */
     public static function defecto(?string $rol): array
     {
-        $plan = self::DEFECTOS_ROL[$rol] ?? self::DEFECTOS_NIVEL[RoleHierarchy::level($rol)] ?? self::DEFECTOS_NIVEL[1];
+        return self::armarDefecto(
+            self::DEFECTOS_ROL[$rol] ?? self::DEFECTOS_NIVEL[RoleHierarchy::level($rol)] ?? self::DEFECTOS_NIVEL[1]
+        );
+    }
 
+    /**
+     * El plano de un rol personalizado que solo tiene rango. Está separado de
+     * defecto() para poder comparar rango y rol de sistema en la guarda: un rol
+     * creado "a partir de Profesor" tiene que quedar haciendo lo mismo que Profesor.
+     */
+    public static function defectoNivel(int $nivel): array
+    {
+        return self::armarDefecto(self::DEFECTOS_NIVEL[$nivel] ?? self::DEFECTOS_NIVEL[1]);
+    }
+
+    private static function armarDefecto(array $plan): array
+    {
         $out = [];
         foreach (array_keys(self::AREAS) as $area) {
             $editar = $plan['excepciones'][$area] ?? $plan['editar'];
@@ -230,14 +248,17 @@ class Alcances
     }
 
     /** Lista de módulos que corresponde a un rol sin configuración. */
-    public static function modulosDefecto(?string $rol): array
+    public static function modulosDefecto(?string $rol, ?int $nivel = null): array
     {
         $rol = (string) $rol;
         if (array_key_exists($rol, self::MODULOS_ROL)) {
             $lista = self::MODULOS_ROL[$rol];
             return $lista === null ? array_keys(self::MODULOS) : $lista;
         }
-        $nivel = RoleHierarchy::level($rol);
+        // El rango viene pasado por quien está GUARDANDO el rol: si en el mismo
+        // guardado sube de nivel, comparar contra el nivel viejo descartaría
+        // módulos que el nuevo rango sí justifica.
+        $nivel = $nivel ?? RoleHierarchy::level($rol);
         if ($nivel >= 3) return array_keys(self::MODULOS);
         if ($nivel === 2) return self::MODULOS_ROL[RoleHierarchy::PRECEPTOR];
         if ($nivel <= 0) return [];
@@ -279,9 +300,14 @@ class Alcances
      * Deja solo las reglas válidas y descarta lo que ya es el valor por defecto:
      * si el mapa guardado queda vacío, el rol vuelve a no pasar por el filtro.
      */
-    public static function sanear(?array $input, ?string $rol): array
+    public static function sanear(?array $input, ?string $rol, ?int $nivel = null): array
     {
-        $base = self::defecto($rol);
+        // Para un rol personalizado el plano base es el de su rango, y el guardado
+        // que cambia el rango tiene que comparar contra el rango NUEVO: si no, la
+        // excepción que se acaba de pedir se descarta por "ya era el defecto".
+        $base = $nivel !== null && RoleHierarchy::nivelSistema($rol) <= 0
+            ? self::defectoNivel($nivel)
+            : self::defecto($rol);
         $out = [];
         foreach ((array) $input as $area => $regla) {
             if (!isset(self::AREAS[$area])) continue;
@@ -311,11 +337,11 @@ class Alcances
      * Igual que sanear() pero con los módulos: se guarda solo la lista cuando es
      * distinta de la que el rol muestra por defecto.
      */
-    public static function sanearModulos(?array $input, ?string $rol): ?array
+    public static function sanearModulos(?array $input, ?string $rol, ?int $nivel = null): ?array
     {
         $validas = array_values(array_unique(array_intersect(array_keys(self::MODULOS), (array) $input)));
         sort($validas);
-        $defecto = self::modulosDefecto($rol);
+        $defecto = self::modulosDefecto($rol, $nivel);
         sort($defecto);
         return $validas === $defecto ? null : $validas;
     }

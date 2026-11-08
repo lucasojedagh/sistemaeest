@@ -23,6 +23,12 @@ class Documento extends Model
         'roles' => 'array',
     ];
 
+    /**
+     * La ruta física dentro del disco del server no le sirve a ninguna pantalla
+     * y describe cómo está guardado el archivo; la descarga siempre va por id.
+     */
+    protected $hidden = ['ruta'];
+
     public function user()
     {
         return $this->belongsTo(User::class);

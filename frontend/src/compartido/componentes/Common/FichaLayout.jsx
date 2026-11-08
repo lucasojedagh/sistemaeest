@@ -3,6 +3,8 @@
 // ===============================
 import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import Avatar from "./Avatar";
+import { iniciales } from "../../lib/iniciales";
 import "./FichaLayout.css";
 
 /*
@@ -12,6 +14,9 @@ import "./FichaLayout.css";
  *   onClose     - Cierra el modal.
  *   titulo      - Texto del encabezado (ej.: "Ficha del Profesor").
  *   children    - Contenido (cards de la ficha).
+ *   avatarId    - id de la cuenta cuya foto se muestra en el encabezado.
+ *   avatarVersion - versión de esa foto (cambia cuando el usuario sube otra).
+ *   avatarFallback - iniciales explícitas cuando la cuenta no tiene foto.
  *   headerRight - Nodo opcional a la derecha del encabezado (chips de estado, etc).
  *
  * Shell visual idéntico al modal de "Mi cuenta" (AccountModal):
@@ -35,15 +40,17 @@ const tag = "ficha-tag";
 
 /* Convierte cualquier valor a string seguro */
 const safe = (s) => (s == null ? "" : String(s));
-/* Iniciales a partir de nombre + apellido */
-const initials = (nombre = "", apellido = "") =>
-  `${safe(apellido)[0] || ""}${safe(nombre)[0] || ""}`.toUpperCase().slice(0, 2);
+/* Iniciales del avatar: la regla es una sola en todo el sistema (ver lib/iniciales) */
+const initials = iniciales;
 
 export default function FichaLayout({
   open,
   onClose,
   titulo = "Ficha",
   subtitulo,
+  avatarId,
+  avatarVersion,
+  avatarFallback,
   children,
 }) {
   // Desmontamos recién cuando termina la animación de salida.
@@ -63,12 +70,11 @@ export default function FichaLayout({
   // Congelamos la última versión abierta para que el fade de salida muestre
   // la ficha real y no un encabezado vacío.
   const ultimaAperturaRef = useRef(null);
+  const apertura = { children, titulo, subtitulo, avatarId, avatarVersion, avatarFallback };
   useEffect(() => {
-    if (open) ultimaAperturaRef.current = { children, titulo, subtitulo };
+    if (open) ultimaAperturaRef.current = apertura;
   });
-  const contenido = open || !ultimaAperturaRef.current
-    ? { children, titulo, subtitulo }
-    : ultimaAperturaRef.current;
+  const contenido = open || !ultimaAperturaRef.current ? apertura : ultimaAperturaRef.current;
 
   useEffect(() => {
     if (!cerrando) return;
@@ -81,7 +87,28 @@ export default function FichaLayout({
 
   if (!visible) return null;
 
-  const { children: contenidoFicha, titulo: tituloFicha, subtitulo: subtituloFicha } = contenido;
+  const {
+    children: contenidoFicha,
+    titulo: tituloFicha,
+    subtitulo: subtituloFicha,
+    avatarId: idFoto,
+    avatarVersion: versionFoto,
+    avatarFallback: inicialesFoto,
+  } = contenido;
+
+  // Sin foto de la cuenta quedan las iniciales: las que pide la ficha o, si no
+  // las indica, las que se pueden deducir de los datos que ya trae el contenido.
+  const iniciales =
+    inicialesFoto ||
+    ((safe(tituloFicha).includes("Alumno")
+      ? initials(contenidoFicha?.props?.alumno?.nombre, contenidoFicha?.props?.alumno?.apellido)
+      : initials(
+          (contenidoFicha?.props?.profesor || contenidoFicha?.props?.preceptor)?.nombre ??
+            (contenidoFicha?.props?.profesor || contenidoFicha?.props?.preceptor)?.name,
+          (contenidoFicha?.props?.profesor || contenidoFicha?.props?.preceptor)?.apellido ??
+            (contenidoFicha?.props?.profesor || contenidoFicha?.props?.preceptor)?.lastname
+        )) ||
+      "•");
 
   return (
     <div className={`ficha-backdrop${cerrando ? " is-closing" : ""}`}>
@@ -101,16 +128,14 @@ export default function FichaLayout({
 
           <div className="ficha-header">
             <div className="ficha-header-row">
-              <div className="ficha-avatar">
-                {(safe(tituloFicha).includes("Alumno")
-                  ? initials(contenidoFicha?.props?.alumno?.nombre, contenidoFicha?.props?.alumno?.apellido)
-                  : initials(
-                      (contenidoFicha?.props?.profesor || contenidoFicha?.props?.preceptor)?.nombre ??
-                        (contenidoFicha?.props?.profesor || contenidoFicha?.props?.preceptor)?.name,
-                      (contenidoFicha?.props?.profesor || contenidoFicha?.props?.preceptor)?.apellido ??
-                        (contenidoFicha?.props?.profesor || contenidoFicha?.props?.preceptor)?.lastname
-                    )) || "•"}
-              </div>
+              <Avatar
+                id={idFoto}
+                version={versionFoto}
+                className="ficha-avatar"
+                titulo={tituloFicha}
+              >
+                {iniciales}
+              </Avatar>
 
               <div className="ficha-header-text">
                 <h3 className="ficha-title">{tituloFicha}</h3>

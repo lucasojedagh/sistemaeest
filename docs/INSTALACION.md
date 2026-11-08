@@ -38,6 +38,11 @@ docker compose exec backend php artisan db:seed --force
 > no va: deja mezclados los alumnos de muestra con los reales. Ahí se siembran
 > solamente `AdminUserSeeder` y `ParametroDivisionesSeeder`, y los alumnos
 > entran por la importación de la planilla — ver `DESPLEGUE-LINUX.md` §4.
+>
+> Y si los datos ya existen en otra máquina (la notebook donde se está trabajando
+> hoy), no se importa ni se siembra: se migra el paquete completo con
+> `scripts/exportar-migracion.sh` y `scripts/restaurar-migracion.sh` — ver
+> `DESPLEGUE-LINUX.md` §14.
 
 La clave inicial sale de `ADMIN_PASSWORD` (ver `backend/.env.example`).
 Si está vacía, el seeder genera una aleatoria y la muestra **una sola vez**
@@ -88,9 +93,31 @@ día a día usá `php artisan migrate`, que aplica solo las migraciones nuevas.
 | `8000` da error de BD | MySQL aún arrancando | esperar al healthcheck, ver `docker compose logs -f mysql` |
 | Cambios en pantalla no se ven | caché del navegador | recargar con Ctrl+F5 |
 | Puerto ocupado | otro programa usa el puerto | liberar el puerto o detener el otro contenedor |
+| `npm: no se reconoce...` (Windows) | el Node de Laragon no está en el PATH | `call C:\laragon\bin\nodejs\node-v22\nodevars.bat` antes de `npm` |
+| `Missing script: "build"` | `npm run build` corrió en una carpeta sin ese script | correrlo en la raíz del repo o en `frontend` (ver §8) |
 
 ## 8. Sin Docker (avanzado)
 
 - Backend: PHP 8.2 + Composer → `cd backend; composer install; php artisan migrate`.
 - Frontend: Node 22 → `cd frontend; npm install; npm run dev`.
+- Build de producción en Windows (Laragon, sin Docker). El `npm` de Laragon no queda en el
+  PATH de una terminal común, así que hay que activarlo primero. Desde `cmd`:
+
+  ```bat
+  call C:\laragon\bin\nodejs\node-v22\nodevars.bat
+  cd C:\laragon\www\Sistema-ENRO-main
+  npm run build
+  ```
+
+  `npm run build` funciona tanto en la raíz del repo —donde el `package.json` lo reenvía a
+  `frontend`— como dentro de `frontend`. Escribe en `frontend/dist`, que es lo que sirve el
+  servidor; el `nodevars.bat` también hace falta para `npm run lint` y `npm install`.
+- El **manual de usuario** viaja dentro del `dist`: el build copia el PDF de
+  `docs/` a `dist/manuales/` y genera su `indice.json`. Si al server solo se le
+  sube `dist`, el modal "Manuales" lo descarga de ahí; si además está `docs/`,
+  manda la API (`/api/manuales`).
+- El **manual del programador** NO se copia al `dist`: es documentación técnica y
+  un archivo dentro de `dist` es una URL pública. Se sirve solo por la API, que
+  es donde se filtra el permiso `manuales.programador`; para que aparezca, la
+  carpeta `docs/` tiene que estar en el server junto al backend.
 - El modo oficial y probado es con Docker.

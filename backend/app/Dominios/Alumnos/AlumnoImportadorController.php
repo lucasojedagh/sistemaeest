@@ -16,10 +16,16 @@ use Illuminate\Validation\ValidationException;
  *
  * La pantalla siempre hace dos pasos: primero vista previa (no escribe nada) y
  * después la importación. Así nadie carga 1200 alumnos de un clic equivocado.
- * Los alumnos que ya existen por DNI se omiten: la importación nunca pisa datos.
+ * Los alumnos que ya existen se omiten: por DNI, y por nombre y curso cuando el
+ * DNI está vacío. La importación nunca pisa datos.
  */
 class AlumnoImportadorController extends Controller
 {
+    // Techo de bytes descomprimidos de una planilla (.xlsx / .ods son zips). Una
+    // lista de 1200 alumnos reales ocupa pocos megabytes; el tope sólo corta
+    // archivos armados a propósito para reventar la memoria de PHP.
+    private const LIMITE_DESCOMPRIMIDO = 300 * 1024 * 1024;
+
     /** Plantilla vacia con los encabezados y la hoja de instrucciones. */
     public function plantilla()
     {
@@ -92,10 +98,10 @@ class AlumnoImportadorController extends Controller
                 null,
                 null,
                 [
-                    'creados' => $creados,
-                    'omitidas' => $resultado['totales']['existentes'],
-                    'rechazadas' => $resultado['totales']['rechazadas'],
-                    'muestra' => array_slice($detalles, 0, 10),
+                    'Alumnos creados'          => $creados,
+                    'Alumnos que ya existían'  => $resultado['totales']['existentes'],
+                    'Filas rechazadas'         => $resultado['totales']['rechazadas'],
+                    'Primeros creados'         => array_slice($detalles, 0, 10),
                 ]
             );
         }
@@ -149,12 +155,52 @@ class AlumnoImportadorController extends Controller
             ]);
         }
 
+        $camino = $archivo->getRealPath();
+
+        // La extensión la escribe quien sube el archivo; lo que dice el contenido
+        // es lo que realmente se abre. Sin esto, cualquier otro tipo (un .html
+        // guardado como .xlsx, por ejemplo) llegaba hasta PhpSpreadsheet.
+        $cabecera = (string) @file_get_contents($camino, false, null, 0, 8);
+        $esZip    = str_starts_with($cabecera, 'PK');
+        $esViejo  = str_starts_with($cabecera, "\xD0\xCF\x11\xE0");
+        if (!(($extension === 'xls' && $esViejo) || ($extension !== 'xls' && $esZip))) {
+            throw ValidationException::withMessages([
+                'archivo' => 'Ese archivo no es una planilla de Excel aunque termine en .' . $extension . '. Abrila con Excel o LibreOffice, guardala como .xlsx y volvé a subirla.',
+            ]);
+        }
+
+        $this->descartarZipGigante($camino, $extension);
+
         try {
-            return (new AlumnosExcelImport())->leer($archivo->getRealPath());
+            return (new AlumnosExcelImport())->leer($camino);
         } catch (\Throwable $e) {
             report($e);
             throw ValidationException::withMessages([
                 'archivo' => 'No se pudo leer el archivo. Revisá que sea una planilla válida y que no esté abierta en Excel.',
+            ]);
+        }
+    }
+
+    // Un .xlsx o .ods es un zip: un archivo de unos pocos kilobytes puede
+    // descomprimirse en gigabytes y la planilla se arma en memoria. Se mide el
+    // tamaño real de las entradas antes de entregarlo a PhpSpreadsheet.
+    private function descartarZipGigante(string $camino, string $extension): void
+    {
+        if ($extension === 'xls') return;
+
+        $zip = new \ZipArchive();
+        if ($zip->open($camino) !== true) return; // lo rechaza el lector, con mensaje propio
+
+        $total = 0;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $total += (int) ($zip->statIndex($i)['size'] ?? 0);
+            if ($total > self::LIMITE_DESCOMPRIMIDO) break;
+        }
+        $zip->close();
+
+        if ($total > self::LIMITE_DESCOMPRIMIDO) {
+            throw ValidationException::withMessages([
+                'archivo' => 'El archivo viene comprimido de una forma que el sistema no puede abrir de forma segura. Volvé a guardarlo desde Excel o LibreOffice como .xlsx y subí esa copia.',
             ]);
         }
     }

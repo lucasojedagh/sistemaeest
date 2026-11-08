@@ -67,7 +67,7 @@ class CoberturaController extends Controller
             select c.anio, c.division,
                    (select count(*) from alumnos a
                      where a.anio = c.anio and a.division = c.division
-                       and a.estado <> "Egresado") alumnos,
+                       and a.estado not in ("Egresado","Inactivo")) alumnos,
                    (select count(*) from horario_celdas h
                      where h.curso_id = c.id) celdas,
                    (select count(*) from horario_celdas h
@@ -198,10 +198,14 @@ class CoberturaController extends Controller
             if ($nadie) $items[] = ['curso' => $c['label'], 'alumnos' => $c['alumnos'], 'celdas' => $c['celdas']];
         }
 
-        return $this->bloque('cursos_sin_cobertura', 'alto',
-            'Cursos que ninguna cuenta puede modificar',
-            'Ni la administración tiene alcance de edición sobre estos cursos: nadie puede pasar la lista ni corregir un alumno. Revisá la matriz de alcance del rol en Roles y permisos.',
-            $items);
+        return $this->bloque('cursos_sin_cobertura', [
+            'nivel'    => 'alto',
+            'titulo'   => 'Cursos que ninguna cuenta puede modificar',
+            'que_pasa' => 'Nadie, ni la dirección, tiene permiso para editar estos cursos: no se les puede pasar lista, corregir un alumno ni cargar notas.',
+            'arreglo'  => 'En Usuarios › Roles y permisos, subí el alcance de edición del rol (Alumnos, Asistencia o Calificaciones) a "Todos los cursos".',
+            'ir_a'     => '/admin/usuarios?vista=roles',
+            'boton'    => 'Abrir Roles y permisos',
+        ], $items);
     }
 
     /**
@@ -224,10 +228,14 @@ class CoberturaController extends Controller
             if ($nadie) $items[] = ['curso' => $c['label'], 'alumnos' => $c['alumnos']];
         }
 
-        return $this->bloque('cursos_sin_responsable', 'alto',
-            'Cursos sin preceptor ni docente asignado',
-            'Estos cursos sólo los puede editar la administración: ninguna cuenta de a pie (preceptores o profesores con alcance "solo los asignados") los tiene cargados. Nadie va a pasar la lista día por día. Asigná el curso a una cuenta en Usuarios › Asignaciones o en la ficha del profesor.',
-            $items);
+        return $this->bloque('cursos_sin_responsable', [
+            'nivel'    => 'alto',
+            'titulo'   => 'Cursos sin preceptor ni docente asignado',
+            'que_pasa' => 'Estos cursos sólo los puede editar la administración; ningún preceptor ni profesor los tiene cargados. En la práctica nadie les pasa lista día por día.',
+            'arreglo'  => 'Asigná cada curso a la cuenta que corresponde, o cargalo en la ficha del profesor que lo tiene a su cargo.',
+            'ir_a'     => '/admin/usuarios',
+            'boton'    => 'Asignar los cursos a las cuentas',
+        ], $items);
     }
 
     /** Cuentas atadas a "solo lo asignado" que no tienen ningún curso. */
@@ -239,10 +247,14 @@ class CoberturaController extends Controller
             $items[] = ['usuario' => $dato['usuario'], 'rol' => $dato['rol']];
         }
 
-        return $this->bloque('cuentas_sin_curso', 'alto',
-            'Cuentas sin ningún curso asignado',
-            'Estas cuentas sólo pueden escribir en sus cursos asignados y no tienen ninguno: no pueden pasar lista ni editar un alumno. Asignales el curso o la división que les corresponde.',
-            $items);
+        return $this->bloque('cuentas_sin_curso', [
+            'nivel'    => 'alto',
+            'titulo'   => 'Cuentas que no pueden cargar nada',
+            'que_pasa' => 'Estas cuentas sólo pueden escribir en sus cursos asignados y no tienen ninguno: entran al sistema y no encuentran dónde pasar lista ni editar un alumno.',
+            'arreglo'  => 'Asignales el curso o la división que les toca desde la ficha de cada cuenta.',
+            'ir_a'     => '/admin/usuarios',
+            'boton'    => 'Asignar los cursos a las cuentas',
+        ], $items);
     }
 
     /** Docentes con horas en el horario que no pueden iniciar sesión. */
@@ -263,10 +275,14 @@ class CoberturaController extends Controller
             'celdas'  => (int) $f->celdas,
         ], $filas);
 
-        return $this->bloque('docentes_sin_cuenta', 'medio',
-            'Docentes con horario y sin cuenta activa',
-            'Aparecen en los horarios pero no tienen una cuenta con ese email, así que nadie carga sus notas ni su asistencia. Creá la cuenta con el mismo email o corregí el de la ficha.',
-            $items);
+        return $this->bloque('docentes_sin_cuenta', [
+            'nivel'    => 'medio',
+            'titulo'   => 'Docentes con horario y sin cuenta',
+            'que_pasa' => 'Aparecen repartidos en los horarios, pero no tienen una cuenta con ese email: no pueden entrar a cargar sus notas ni su asistencia.',
+            'arreglo'  => 'Creales la cuenta con el mismo email de la ficha, o corregí el email de la ficha para que coincida con la cuenta que ya existe.',
+            'ir_a'     => '/admin/usuarios',
+            'boton'    => 'Crear las cuentas',
+        ], $items);
     }
 
     /** Franjas del horario cuya materia no está en la ficha del docente. */
@@ -296,10 +312,14 @@ class CoberturaController extends Controller
             'celdas'  => (int) $f->celdas,
         ], $filas);
 
-        return $this->bloque('horario_fuera_de_ficha', 'medio',
-            'Materias dictadas que no están en la ficha del docente',
-            'El horario dice que ese profesor dicta esa materia, pero la ficha de asignaciones no la tiene cargada. Puede cargar las notas porque el horario alcanza, pero conviene completar la ficha para que todas las pantallas coincidan.',
-            $items);
+        return $this->bloque('horario_fuera_de_ficha', [
+            'nivel'    => 'medio',
+            'titulo'   => 'El horario dice más que la ficha del docente',
+            'que_pasa' => 'El horario le asigna una materia que el docente no tiene cargada en su ficha. Puede pasar lista y cargar notas, pero otras pantallas no lo muestran como profesor de esa materia.',
+            'arreglo'  => 'Completá la ficha del profesor con esa materia y ese curso.',
+            'ir_a'     => '/profesores',
+            'boton'    => 'Completar fichas de profesores',
+        ], $items);
     }
 
     /** Franjas del horario sin profesor asignado. */
@@ -311,10 +331,14 @@ class CoberturaController extends Controller
             $items[] = ['curso' => $c['label'], 'celdas' => $c['celdas_sin_docente']];
         }
 
-        return $this->bloque('celdas_sin_docente', 'medio',
-            'Franjas de horario sin docente',
-            'Hay materias ubicadas en el horario que no tienen profesor: nadie pasa lista en esa franja ni carga sus notas.',
-            $items);
+        return $this->bloque('celdas_sin_docente', [
+            'nivel'    => 'medio',
+            'titulo'   => 'Franjas del horario sin docente',
+            'que_pasa' => 'Hay materias ubicadas en el horario que no tienen profesor asignado: en esa franja nadie pasa lista ni carga notas.',
+            'arreglo'  => 'Cargá el docente en el horario del curso.',
+            'ir_a'     => '/cursos',
+            'boton'    => 'Completar el horario',
+        ], $items);
     }
 
     /**
@@ -338,10 +362,14 @@ class CoberturaController extends Controller
             $items[] = ['curso' => $c['label'], 'alumnos' => $c['alumnos']];
         }
 
-        return $this->bloque('cursos_fuera_del_catalogo', 'alto',
-            'Cursos que no aparecen en el selector de Asistencia',
-            'El curso existe y tiene alumnos, pero su división no está dada de alta (o está inactiva) en el catálogo de divisiones. Los roles que ven todos los cursos arman la lista del Asistencia desde ese catálogo, así que el curso no aparece en pantalla y nadie puede pasarle la lista. Dala de alta en Cursos › Divisiones.',
-            $items);
+        return $this->bloque('cursos_fuera_del_catalogo', [
+            'nivel'    => 'alto',
+            'titulo'   => 'Cursos que no aparecen en el Asistencia',
+            'que_pasa' => 'El curso existe y tiene alumnos, pero su división no está dada de alta (o está inactiva) en el catálogo de divisiones. Quien ve todos los cursos arma la lista desde ese catálogo, así que el curso no aparece en pantalla y no se le puede pasar lista.',
+            'arreglo'  => 'Dalá de alta la división en Cursos › Divisiones.',
+            'ir_a'     => '/cursos',
+            'boton'    => 'Dar de alta la división',
+        ], $items);
     }
 
     /** Alumnos activos cuyo curso no existe. */
@@ -351,7 +379,7 @@ class CoberturaController extends Controller
             select a.anio, a.division, count(*) n
             from alumnos a
             left join cursos c on c.anio = a.anio and c.division = a.division
-            where a.estado <> "Egresado" and c.id is null
+            where a.estado not in ("Egresado","Inactivo") and c.id is null
             group by a.anio, a.division
             order by a.anio, a.division');
 
@@ -360,10 +388,14 @@ class CoberturaController extends Controller
             'alumnos' => (int) $f->n,
         ], $filas);
 
-        return $this->bloque('alumnos_sin_curso', 'alto',
-            'Alumnos en un curso que no existe',
-            'Estos alumnos tienen año y división, pero no hay curso dado de alta: no aparecen en los selectores de asistencia ni de planillas. Creá el curso o corregí la división del alumno.',
-            $items);
+        return $this->bloque('alumnos_sin_curso', [
+            'nivel'    => 'alto',
+            'titulo'   => 'Alumnos en un curso que no existe',
+            'que_pasa' => 'Estos alumnos tienen año y división cargados, pero no hay curso dado de alta: no aparecen en la lista de asistencia ni en las planillas de notas.',
+            'arreglo'  => 'Creá el curso en Cursos, o corregí el año y la división del alumno en su ficha.',
+            'ir_a'     => '/cursos',
+            'boton'    => 'Crear el curso',
+        ], $items);
     }
 
     /** Cursos activos con horario pero sin alumnos. */
@@ -375,10 +407,14 @@ class CoberturaController extends Controller
             $items[] = ['curso' => $c['label'], 'celdas' => $c['celdas']];
         }
 
-        return $this->bloque('cursos_sin_alumnos', 'bajo',
-            'Cursos con horario y sin alumnos',
-            'Tienen horario cargado pero ningún alumno activo. Si la división realmente no arrancó este ciclo, conviene desactivarla para que no llene los selectores.',
-            $items);
+        return $this->bloque('cursos_sin_alumnos', [
+            'nivel'    => 'bajo',
+            'titulo'   => 'Cursos con horario y sin alumnos',
+            'que_pasa' => 'Tienen horario cargado pero ningún alumno cursando. Suelen ser divisiones que no arrancaron este ciclo.',
+            'arreglo'  => 'Si no van a arrancar, desactivá la división en Cursos › Divisiones para que no llene los selectores.',
+            'ir_a'     => '/cursos',
+            'boton'    => 'Revisar las divisiones',
+        ], $items);
     }
 
     /**
@@ -409,14 +445,23 @@ class CoberturaController extends Controller
             'marcas' => (int) $f->fuera,
         ], $filas);
 
-        return $this->bloque('asistencias_fuera_de_curso', 'medio',
-            'Clases con alumnos que ya no están en ese curso',
-            'Al abrir la clase la planilla aparece vacía aunque el listado muestre marcas: son alumnos que fueron promovidos o cambiados de división. Revisá el curso de esos alumnos antes de volver a pasar la lista sobre esa fecha.',
-            $items);
+        return $this->bloque('asistencias_fuera_de_curso', [
+            'nivel'    => 'medio',
+            'titulo'   => 'Asistencia marcada con alumnos que ya no están en el curso',
+            'que_pasa' => 'Son clases con marcas de alumnos que hoy están en otro curso, por una promoción o un cambio de división. Al abrir la clase la planilla aparece vacía aunque el listado muestre marcas.',
+            'arreglo'  => 'Revisá el curso actual de esos alumnos antes de volver a pasar lista sobre esa fecha.',
+            'ir_a'     => '/asistencia',
+            'boton'    => 'Ver el Asistencia',
+        ], $items);
     }
 
-    private function bloque(string $clave, string $nivel, string $titulo, string $detalle, array $items): ?array
+    /**
+     * Un tema de la revisión. Sin casos no se manda nada: la tarjeta del inicio
+     * sólo muestra lo que hay que atender. El texto viene armado, no traducido
+     * de nombres de tabla, para que se lea como una indicación de secretaría.
+     */
+    private function bloque(string $clave, array $texto, array $items): ?array
     {
-        return $items === [] ? null : compact('clave', 'nivel', 'titulo', 'detalle', 'items');
+        return $items === [] ? null : array_merge(['clave' => $clave, 'items' => $items], $texto);
     }
 }

@@ -18,7 +18,10 @@ import DropdownFiltroAnios from '../alumnos/DropdownFiltroAnios';
 import DropdownFiltroRol from '../alumnos/DropdownFiltroRol';
 import DropdownFiltroEstado from '../alumnos/DropdownFiltroEstado';
 import { useAuth } from '../auth/AuthContext';
+import { esGestion } from '../auth/roles';
+import { accionHabilitada } from '../../compartido/lib/permisos';
 import Breadcrumbs from "../../compartido/componentes/Common/Breadcrumbs";
+import ErrorState from "../../compartido/componentes/Common/ErrorState";
 import useConfirmAction from "../../compartido/hooks/useConfirmAction";
 import useAviso from "../../compartido/componentes/modals/useAviso";
 import usePasswordPrompt from "../../compartido/componentes/modals/usePasswordPrompt";
@@ -110,9 +113,11 @@ const Profesores = () => {
   const [mostrarAviso, , avisoModal] = useAviso();
   const [confirmarContrasena, modalPwd] = usePasswordPrompt();
   const { user } = useAuth();
-  const isProfesor = user?.role === 'profesor';
-  const isPreceptor = user?.role === 'preceptor';
-  const soloLectura = isProfesor || isPreceptor;
+  // Tres casillas del catálogo, tres acciones distintas en esta pantalla:
+  // editar la ficha, dar de baja definitiva y mover la cadena de suplencias.
+  const puedeEditarProfesor = !!user && accionHabilitada(user, 'profesores.editar', esGestion(user.role));
+  const puedeEliminarProfesor = !!user && accionHabilitada(user, 'profesores.eliminar', esGestion(user.role));
+  const soloLectura = !puedeEditarProfesor;
 
   // UI
   const [busqueda, setBusqueda] = useState('');
@@ -167,6 +172,15 @@ const Profesores = () => {
   const [loading, setLoading] = useState(() => !getCached('profesores/activos'));
   const [filtrando, setFiltrando] = useState(false);
   const [profesores, setProfesores] = useState(() => getCached('profesores/activos') || []);
+  // Aviso cuando la lista no pudo leerse (distinto de "no hay profesores").
+  const [errorCarga, setErrorCarga] = useState(null);
+
+  // El reintento dispara el efecto de carga (depende de `loading`), así no se
+  // hacen dos pedidos del mismo listado.
+  const reintentarCarga = () => {
+    setErrorCarga(null);
+    setLoading(true);
+  };
 
   useEffect(() => {
     if (!mostrarDetalle && !mostrarFicha) return;
@@ -220,10 +234,17 @@ const Profesores = () => {
     if (filtroRol !== 'todos') qsActivos.set('rol', filtroRol);
     if (filtroEstado !== 'todos') qsActivos.set('estado', filtroEstado === 'activo' ? 'Activo' : 'Licencia');
 
-    const act = await apiGet(`/profesores?per_page=2000&${qsActivos.toString()}`);
-    const activos = Array.isArray(act) ? act : (act?.data ?? []);
-    setProfesores(activos);
-    setCache('profesores/activos', activos);
+    try {
+      const act = await apiGet(`/profesores?per_page=2000&${qsActivos.toString()}`);
+      const activos = Array.isArray(act) ? act : (act?.data ?? []);
+      setProfesores(activos);
+      setCache('profesores/activos', activos);
+      setErrorCarga(null);
+    } catch (e) {
+      // Se conserva lo que ya estaba en pantalla, pero el fallo se dice: sin
+      // esto una tabla vieja parece datos al día.
+      setErrorCarga(mensajeAmable(e, 'No se pudo cargar la lista de profesores.'));
+    }
   };
 
   // Refs para leer el estado actual de las listas sin incluirlas en las deps del efecto
@@ -488,13 +509,20 @@ const Profesores = () => {
 
         {loading && profesoresFiltrados.length === 0 ? (
           <div className="prof-loading">Cargando datos...</div>
+        ) : errorCarga && profesores.length === 0 ? (
+          <ErrorState mensaje={errorCarga} onReintentar={reintentarCarga} compact />
         ) : (
         <div className="prof-list-wrap">
+          {errorCarga && (
+            <ErrorState mensaje={errorCarga} onReintentar={reintentarCarga} compact />
+          )}
+          {/* "Baja definitiva de profesores" vive dentro del detalle, así que el
+              botón se muestra también cuando el rol solo puede dar de baja. */}
           <ListaProfesores
             profesores={profesoresFiltrados}
             soloLectura={soloLectura}
             onVerFicha={setMostrarFicha}
-            onMostrarDetalle={!soloLectura ? setMostrarDetalle : undefined}
+            onMostrarDetalle={!soloLectura || puedeEliminarProfesor ? setMostrarDetalle : undefined}
           />
           {filtrando && (
             <div className="prof-list-overlay">
@@ -504,13 +532,16 @@ const Profesores = () => {
         </div>
         )}
 
-        {/* Modal de edicion (admin/directivo/jefe). La ficha de solo lectura
-            se muestra en ProfesorFicha de forma independiente. */}
+        {/* Modal de edicion. La ficha de solo lectura se muestra en
+            ProfesorFicha de forma independiente. `soloLectura` va al modal: sin la
+            casilla "Crear y editar profesores" los campos quedan en lectura y el
+            botón Guardar no aparece (el PUT /profesores respondería 403). */}
         <ProfesoresDetalle
           profesor={mostrarDetalle}
           setProfesor={setMostrarDetalle}
+          soloLectura={soloLectura}
           actualizarProfesor={soloLectura ? undefined : actualizarProfesor}
-          eliminarProfesor={soloLectura ? undefined : eliminarProfesor}
+          eliminarProfesor={puedeEliminarProfesor ? eliminarProfesor : undefined}
           onSuplenciasChange={refreshBoth}
         />
 

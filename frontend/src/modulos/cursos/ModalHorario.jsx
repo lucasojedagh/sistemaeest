@@ -8,7 +8,6 @@ import { motion } from "framer-motion";
 import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
 import { bloquearScroll } from "../../compartido/lib/lockScroll";
 import useAviso from "../../compartido/componentes/modals/useAviso";
-import { useAuth } from "../../modulos/auth/AuthContext";
 import { cursoLabel } from "../../compartido/lib/cursos";
 import { useToast } from "../../compartido/componentes/Common/Toast";
 import { useDeshacerAviso } from "../../compartido/lib/deshacer.jsx";
@@ -30,6 +29,7 @@ import "./ModalHorario.css";
 //   profesoresIndex      - Indice de profesores por materia (mapping).
 //   highlightTarget      - Objeto opcional para resaltar un profesor especifico.
 //   canEdit              - Booleano que indica si el usuario puede editar.
+//   puedeImprimir        - Casilla "Imprimir y exportar vistas" del rol.
 //   onBackToSearch       - Funcion para volver al modal de busqueda.
 
 const DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie"];
@@ -60,17 +60,17 @@ export default function ModalHorario({
   profesoresIndex = {},
   highlightTarget = null,
   canEdit: canEditProp,
+  puedeImprimir = true,
   onBackToSearch,
   loading = false,
 }) {
-  const { user } = useAuth();
   const showToast = useToast();
   const { ofrecerDeshacer } = useDeshacerAviso();
   const [confirmAction, confirmModal] = useConfirmAction();
   const [mostrarAviso, pedirConfirmacion, avisoModal] = useAviso();
 
-  // Determina si el usuario puede editar segun la prop o su rol
-  const canEdit = canEditProp !== undefined ? canEditProp : (user?.role !== 'profesor');
+  // La pantalla (Cursos) decide con la casilla del catálogo + el alcance del rol.
+  const canEdit = !!canEditProp;
 
   const [modoEdicion, setModoEdicion] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -803,23 +803,27 @@ export default function ModalHorario({
 
             {/* Controles (footer) */}
             <div className="mhor-footer">
-              <button
-                onClick={imprimirHorario}
-                className="mhor-btn-imprimir"
-                title="Imprimir o exportar a PDF"
-              >
-                <Printer size={18} />
-                Imprimir
-              </button>
+              {puedeImprimir && (
+                <>
+                  <button
+                    onClick={imprimirHorario}
+                    className="mhor-btn-imprimir"
+                    title="Imprimir o exportar a PDF"
+                  >
+                    <Printer size={18} />
+                    Imprimir
+                  </button>
 
-              <button
-                onClick={exportarPdf}
-                className="mhor-btn-pdf"
-                title="Descargar como PDF"
-              >
-                <FileDown size={18} />
-                Exportar PDF
-              </button>
+                  <button
+                    onClick={exportarPdf}
+                    className="mhor-btn-pdf"
+                    title="Descargar como PDF"
+                  >
+                    <FileDown size={18} />
+                    Exportar PDF
+                  </button>
+                </>
+              )}
 
               {canEdit && (
                 <button

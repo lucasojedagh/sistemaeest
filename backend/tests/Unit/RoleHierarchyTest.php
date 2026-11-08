@@ -67,4 +67,18 @@ class RoleHierarchyTest extends TestCase
         $this->assertFalse(RoleHierarchy::canManage('profesor', 'profesor'));
         $this->assertFalse(RoleHierarchy::canManage('sin_rol', 'sin_rol'));
     }
+
+    // El rango de administrador es unico: la cuenta del seeder y nada mas.
+    // canManage() sigue diciendo que solo un admin toca una cuenta admin, pero
+    // esAsignable() cierra la puerta a repartir ese rango (o quitarselo).
+    public function test_el_rango_admin_no_se_asigna(): void
+    {
+        $this->assertFalse(RoleHierarchy::esAsignable('admin'));
+        foreach (['directivo', 'jefe_preceptores', 'prosecretaria', 'preceptor', 'profesor', 'sin_rol'] as $rol) {
+            $this->assertTrue(RoleHierarchy::esAsignable($rol), "el rol {$rol} sí se puede asignar");
+        }
+        // Un rol personalizado nunca es el admin de sistema.
+        $this->assertTrue(RoleHierarchy::esAsignable('coordinador_taller'));
+        $this->assertTrue(RoleHierarchy::esAsignable(null));
+    }
 }

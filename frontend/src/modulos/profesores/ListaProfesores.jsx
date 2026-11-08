@@ -3,6 +3,7 @@
 // ===============================
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { UserRound, Eye, Pencil } from 'lucide-react';
+import Avatar from '../../compartido/componentes/Common/Avatar';
 import "./ListaProfesores.css";
 
 // Componente: ListaProfesores
@@ -20,9 +21,9 @@ const STEP_ROWS = 1;       // Actualiza el indice solo cuando cambia de fila
 
 const ListaProfesores = ({
   profesores = [],
-  soloLectura = false,         // true: solo boton "Ver ficha" (preceptor/profesor)
+  soloLectura = false,         // true: sin edición de datos; cambia el rótulo del botón
   onVerFicha,                  // (prof) => void   (solo lectura)
-  onMostrarDetalle,            // (prof) => void   (editar)
+  onMostrarDetalle,            // (prof) => void   (editar; lo manda el padre solo si el rol puede)
 }) => {
   const containerRef = useRef(null);
   const rafRef = useRef(0);
@@ -167,9 +168,14 @@ const ListaProfesores = ({
                     {/* Columna principal */}
                     <td className="prof-lista-td">
                       <div className="prof-lista-cell-main">
-                        <div className={avatarWrap}>
+                        <Avatar
+                          id={p.user_id}
+                          version={p.avatar_version}
+                          className={avatarWrap}
+                          titulo={`${p.apellido}, ${p.nombre}`}
+                        >
                           <UserRound size={20} className={avatarIcon} />
-                        </div>
+                        </Avatar>
 
                         <div className="prof-lista-cell-text">
                           <h3 className="prof-lista-nombre">
@@ -292,12 +298,12 @@ const ListaProfesores = ({
                           <Eye size={20} />
                         </button>
                         )}
-                        {onMostrarDetalle && !soloLectura && (
+                        {onMostrarDetalle && (
                         <button
                           type="button"
                           onClick={() => onMostrarDetalle(p)}
                           className="prof-lista-btn prof-lista-btn--editar"
-                          title="Editar"
+                          title={soloLectura ? 'Dar de baja' : 'Editar'}
                         >
                           <Pencil size={20} />
                         </button>

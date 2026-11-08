@@ -1,9 +1,11 @@
 <?php
 
-// Middleware de permisos por catálogo. Se aplica al grupo autenticado completo y
-// solo actúa cuando el rol del usuario tiene una fila en roles_config (un rol
-// personalizado, o un rol de sistema al que se le quitaron permisos).
-// Las cuentas actuales, sin fila, pasan directo: no cambia nada su comportamiento.
+// Middleware de permisos por catálogo. Se aplica al grupo autenticado completo.
+// La clave de la ruta se exige siempre: para un rol sin lista guardada,
+// Permisos::puede() contesta con la base de su rango, así que el catálogo manda
+// también en las rutas de lectura que no llevan middleware 'role:'. Sin esto,
+// una cuenta sin rol (nivel 0, base vacía) entraba a profesores, documentos,
+// dashboard y asistencia porque no tenía fila en roles_config.
 
 namespace App\Http\Middleware;
 
@@ -21,10 +23,6 @@ class EnsurePermiso
         }
 
         $rol = $user->role;
-        if (Permisos::sinFiltro($rol)) {
-            return $next($request);
-        }
-
         $clave  = Permisos::claveDel($request);
 
         if ($clave === null) {

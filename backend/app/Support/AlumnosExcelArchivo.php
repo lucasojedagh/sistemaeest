@@ -147,7 +147,7 @@ class AlumnosExcelArchivo
             ['División', 'La letra o número de división tal como está activa en el sistema (2, 3, A...). Si no existe para ese año, la fila se rechaza.'],
             ['Grupo', 'A o B (la rotación de la división). Vacío si la división no rota.'],
             ['Especialidad', 'Solo desde 4° año. Podés escribir la clave (informatica, mmo, electromecanica, quimica) o el nombre completo.'],
-            ['Estado', 'Activo o Egresado. Si lo dejás vacío se carga como Activo.'],
+            ['Estado', 'Activo, Egresado o Inactivo (el alumno que abandonó). Si lo dejás vacío se carga como Activo.'],
             ['PPI / AE', 'Sí o No. PPI = Proyecto Pedagógico de Inclusión, AE = Acompañante Externo.'],
             ['Responsable', 'Se carga un solo responsable por alumno (el que figura en la planilla). Después se pueden agregar más desde la ficha.'],
             ['', ''],

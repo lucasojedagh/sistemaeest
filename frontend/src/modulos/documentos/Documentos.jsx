@@ -3,6 +3,7 @@ import { FileText, Upload, Download, Printer, Trash2, Search, Loader2, File, Fil
 import { useAuth } from "../auth/AuthContext";
 import Breadcrumbs from "../../compartido/componentes/Common/Breadcrumbs";
 import EmptyState from "../../compartido/componentes/Common/EmptyState";
+import ErrorState from "../../compartido/componentes/Common/ErrorState";
 import { useToast } from "../../compartido/componentes/Common/Toast";
 import { apiGet, apiUpload, apiBlob, apiDelete, apiPut } from "../../compartido/lib/api";
 import { descargarBlob, mensajeDescarga } from "../../compartido/lib/descarga";
@@ -12,6 +13,7 @@ import useAviso from "../../compartido/componentes/modals/useAviso";
 import usePasswordPrompt from "../../compartido/componentes/modals/usePasswordPrompt";
 import useAvisoDeCambios from "../../compartido/hooks/useAvisoDeCambios";
 import { esGestion } from "../auth/roles";
+import { accionHabilitada } from "../../compartido/lib/permisos";
 import "./Documentos.css";
 
 const fileIcon = (mime) => {
@@ -22,6 +24,9 @@ const fileIcon = (mime) => {
   if (mime.includes("zip") || mime.includes("rar")) return <FileArchive size={20} className="doc-icon-archive" />;
   return <File size={20} className="doc-icon-generic" />;
 };
+
+const MAX_DOCUMENTO_MB = 50;
+const MAX_DOCUMENTO_BYTES = MAX_DOCUMENTO_MB * 1048576;
 
 const formatSize = (bytes) => {
   if (!bytes) return "—";
@@ -59,7 +64,14 @@ export default function Documentos() {
   const [, pedirConfirmacion, avisoModal] = useAviso();
   const [confirmarContrasena, modalPwd] = usePasswordPrompt();
   const fileRef = useRef(null);
-  const canManage = esGestion(user?.role) || user?.role === "preceptor";
+  // Cada botón de la fila tiene su propia casilla del catálogo. Sin lista
+  // guardada en el rol manda la regla de siempre: preceptor para arriba.
+  const rangoGestionaDocumentos = esGestion(user?.role) || user?.role === "preceptor";
+  const puedeSubir = accionHabilitada(user, 'documentos.subir', rangoGestionaDocumentos);
+  const puedeEditarDoc = accionHabilitada(user, 'documentos.editar', rangoGestionaDocumentos);
+  const puedeEliminarDoc = accionHabilitada(user, 'documentos.eliminar', rangoGestionaDocumentos);
+  const puedeDescargar = accionHabilitada(user, 'documentos.descargar', true);
+  const puedeImprimir = accionHabilitada(user, 'documentos.imprimir', true);
 
   const [docs, setDocs] = useState(docsCache.get("")?.docs || []);
   const [loading, setLoading] = useState(!docsCache.has(""));
@@ -74,12 +86,15 @@ export default function Documentos() {
   const [editName, setEditName] = useState("");
   const [editRoles, setEditRoles] = useState([]);
   const [guardando, setGuardando] = useState(false);
+  // Aviso cuando la lista no pudo leerse (distinto de "todavía no hay documentos").
+  const [errorCarga, setErrorCarga] = useState(null);
 
   const fetchDocs = async () => {
     const qs = search ? `?search=${encodeURIComponent(search)}` : "";
     const cached = docsCache.get(qs);
     if (cached && Date.now() - cached.ts < DOCS_CACHE_TTL) {
       setDocs(cached.docs);
+      setErrorCarga(null);
       setLoading(false);
       return;
     }
@@ -89,7 +104,9 @@ export default function Documentos() {
       const docsData = data?.data || data || [];
       setDocs(docsData);
       docsCache.set(qs, { docs: docsData, ts: Date.now() });
-    } catch {
+      setErrorCarga(null);
+    } catch (e) {
+      setErrorCarga(mensajeAmable(e, "No se pudieron cargar los documentos."));
       showToast("No se pudieron cargar los documentos. Revisá tu conexión.", "error");
     }
     setLoading(false);
@@ -150,6 +167,13 @@ export default function Documentos() {
 
     setSubiendo(true);
     try {
+      // Se corta acá, no en el server: un archivo de 200 MB subirse para que
+      // nginx lo rechace a mitad de camino tarda minutos y no deja mensaje.
+      if (uploadFile.size > MAX_DOCUMENTO_BYTES) {
+        showToast(`El documento pesa más de ${MAX_DOCUMENTO_MB} MB. Comprímilo o dividilo antes de subirlo.`, "error");
+        return;
+      }
+
       const formData = new FormData();
       formData.append("nombre", uploadName.trim());
       formData.append("archivo", uploadFile);
@@ -164,7 +188,7 @@ export default function Documentos() {
       setUploadRoles(ROLES_DOC_DEFAULT);
       fetchDocs();
     } catch (err) {
-      const msg = err?.data?.message || err?.data?.errors?.archivo?.[0] || "Error al subir";
+      const msg = err?.data?.errors?.archivo?.[0] || err?.message || "No se pudo subir el documento. Intentá de nuevo.";
       showToast(msg, "error");
     } finally {
       setSubiendo(false);
@@ -250,7 +274,7 @@ export default function Documentos() {
               Documentos
             </h1>
           </div>
-          {canManage && (
+          {puedeSubir && (
             <button
               onClick={() => setShowUpload(true)}
               className="doc-btn-primary"
@@ -273,6 +297,8 @@ export default function Documentos() {
 
         {loading ? (
           <div className="doc-loading">Cargando datos...</div>
+        ) : errorCarga && docs.length === 0 ? (
+          <ErrorState mensaje={errorCarga} onReintentar={fetchDocs} compact />
         ) : docs.length === 0 ? (
           <EmptyState
             icon={FileText}
@@ -330,20 +356,22 @@ export default function Documentos() {
                     </td>
                     <td className="doc-td doc-td-right">
                       <div className="doc-actions">
-                        <button onClick={() => handleDownload(doc.id, doc.nombre_archivo)} className="doc-action doc-action-download" title="Descargar">
-                          <Download size={16} />
-                        </button>
-                        {doc.mime === "application/pdf" && (
+                        {puedeDescargar && (
+                          <button onClick={() => handleDownload(doc.id, doc.nombre_archivo)} className="doc-action doc-action-download" title="Descargar">
+                            <Download size={16} />
+                          </button>
+                        )}
+                        {puedeImprimir && doc.mime === "application/pdf" && (
                           <button onClick={() => handlePrint(doc.id, doc.nombre_archivo)} className="doc-action doc-action-print" title="Imprimir">
                             <Printer size={16} />
                           </button>
                         )}
-                        {canManage && (
+                        {puedeEditarDoc && (
                           <button onClick={() => openEdit(doc)} className="doc-action doc-action-edit" title="Editar quién puede verlo">
                             <Pencil size={16} />
                           </button>
                         )}
-                        {canManage && (
+                        {puedeEliminarDoc && (
                           <button onClick={() => handleDelete(doc.id, doc.nombre)} className="doc-action doc-action-delete" title="Eliminar">
                             <Trash2 size={16} />
                           </button>
@@ -385,7 +413,7 @@ export default function Documentos() {
                 />
               </div>
               <div>
-                <label className="doc-label">Archivo (PDF, DOC, XLS, etc. — max 50MB)</label>
+                <label className="doc-label">Archivo (PDF, DOC, XLS, etc. — max {MAX_DOCUMENTO_MB}MB)</label>
                 <input
                   ref={fileRef}
                   type="file"

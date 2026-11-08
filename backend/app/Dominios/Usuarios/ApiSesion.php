@@ -57,6 +57,14 @@ class ApiSesion extends Model
     /** Cierra todas las sesiones de una persona (cambio de clave, baja, etc.). */
     public static function cerrarTodas(int $userId): int
     {
+        // Se descartan también las copias en caché del middleware (5 minutos): si
+        // no, un token cerrado seguiría entrando hasta que venza la caché, justo
+        // cuando se cambió la clave porque alguien más tenía la cuenta.
+        $tokens = static::where('user_id', $userId)->pluck('token')->all();
+        foreach ($tokens as $t) {
+            \Illuminate\Support\Facades\Cache::forget('auth_token_' . $t);
+        }
+
         return static::where('user_id', $userId)->delete();
     }
 

@@ -125,6 +125,15 @@
   background: var(--blue-200);
   border-radius: var(--radius-lg);
   flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+
+/* Con foto: la imagen ocupa el mismo cuadrado azul (12 + 20 + 12 px). */
+img.prof-lista-avatar {
+  width: 44px;
+  height: 44px;
+  padding: 0;
 }
 
 .prof-lista-avatar-icon {

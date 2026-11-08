@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { AlertTriangle, Loader, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, History, Loader, Search } from "lucide-react";
 import { asistenciaApi } from "../../compartido/api/asistencia";
 import { fmtFecha, fmtPct, cursoLabel } from "../../compartido/lib/asistencia";
 import CoursePicker from "./CoursePicker";
@@ -7,7 +7,7 @@ import EmptyState from "../../compartido/componentes/Common/EmptyState";
 import { mensajeAmable } from "../../compartido/lib/errores";
 import "./InasistenciasAsistencia.css";
 
-export default function InasistenciasAsistencia({ maps }) {
+export default function InasistenciasAsistencia({ maps, onVerFaltas }) {
   const [curso, setCurso] = useState({ anio: "", division: "" });
   const [minimo, setMinimo] = useState(20);
   const [data, setData] = useState(null);
@@ -15,40 +15,57 @@ export default function InasistenciasAsistencia({ maps }) {
   const [error, setError] = useState(null);
 
   const cursoOk = curso.anio && curso.division && curso.division !== "*";
+  const umbral = Number.isFinite(Number(minimo)) ? Math.min(100, Math.max(0, Number(minimo))) : 0;
+
+  // Mismo criterio que en Pasar lista: la respuesta que llega tarde de un curso
+  // anterior no pisa la pantalla.
+  const version = useRef(0);
 
   useEffect(() => {
+    const mia = ++version.current;
     setLoading(true);
     setError(null);
     asistenciaApi
       .inasistencias({
         anio: curso.anio,
         division: curso.division !== "*" ? curso.division : "",
-        minimo,
+        minimo: umbral,
       })
-      .then(setData)
-      .catch((e) => setError(mensajeAmable(e, "No se pudieron cargar las inasistencias. Revisá tu conexión.")))
-      .finally(() => setLoading(false));
-  }, [curso?.anio, curso?.division, minimo]);
+      .then((d) => { if (mia === version.current) setData(d); })
+      .catch((e) => { if (mia === version.current) setError(mensajeAmable(e, "No se pudieron cargar las inasistencias. Revisá tu conexión.")); })
+      .finally(() => { if (mia === version.current) setLoading(false); });
+  }, [curso?.anio, curso?.division, umbral]);
+
+  function verFaltas(a) {
+    if (!a.dni) return;
+    onVerFaltas?.({ dni: a.dni });
+  }
 
   return (
     <div className="inas-container">
       <div className="inas-filters-card">
         <CoursePicker maps={maps} value={curso} onChange={setCurso} allowEmpty />
-        <div>
+        <div className="inas-umbral">
           <label className="inas-label">
-            Mín. % de inasistencia
+            Mostrar alumnos con más del {umbral}% de inasistencia
           </label>
           <input
             type="number"
             min={0}
             max={100}
             value={minimo}
-            onChange={(e) => setMinimo(Number(e.target.value))}
+            onChange={(e) => setMinimo(e.target.value)}
             className="inas-input"
+            aria-label="Porcentaje mínimo de inasistencia para mostrar"
           />
+          <p className="inas-umbral-nota">
+            La inasistencia suma ausentes y faltas justificadas: el justificativo explica la
+            falta, pero no la borra.
+          </p>
         </div>
         <div className="inas-summary">
-          {data ? <b>{data.total_alumnos}</b> : 0} alumnos superan el umbral
+          {data ? <b>{data.total_alumnos}</b> : 0} {data?.total_alumnos === 1 ? "alumno supera" : "alumnos superan"} el umbral
+          {cursoOk ? ` · ${cursoLabel(curso.anio, curso.division)}` : " · todos los cursos"}
         </div>
       </div>
 
@@ -61,13 +78,19 @@ export default function InasistenciasAsistencia({ maps }) {
         <div className="inas-error">{error}</div>
       )}
 
+      {!loading && data?.recortado && (
+        <div className="asist-nota">
+          {`Son ${data.total_alumnos} los que superan el umbral y se listan los ${(data.alumnos || []).length} con más inasistencia. Subí el porcentaje o filtrá por curso para ver el resto.`}
+        </div>
+      )}
+
       {!loading && !error && data && (
         <>
           {(data.alumnos || []).length === 0 ? (
             <EmptyState
               icon={Search}
               title="Sin alertas"
-              description={`No hay alumnos con más de ${data.minimo ?? minimo}% de inasistencia${cursoOk ? ` en ${cursoLabel(curso.anio, curso.division)}` : ""}.`}
+              description={`Ningún alumno supera el ${data.minimo ?? umbral}% de inasistencia${cursoOk ? ` en ${cursoLabel(curso.anio, curso.division)}` : " en los cursos que ves"}.`}
             />
           ) : (
             <div className="inas-table-card">
@@ -77,13 +100,14 @@ export default function InasistenciasAsistencia({ maps }) {
                     <tr className="inas-thead-row">
                       <th className="inas-th">Alumno</th>
                       <th className="inas-th">Curso</th>
-                      <th className="inas-th">Clases</th>
-                      <th className="inas-th">Inasistencias</th>
-                      <th className="inas-th">Justificadas</th>
-                      <th className="inas-th">Tardanzas</th>
+                      <th className="inas-th">Clases relevadas</th>
+                      <th className="inas-th">Faltas sin justificar</th>
+                      <th className="inas-th">Con justificativo</th>
+                      <th className="inas-th">Con tardanza</th>
                       <th className="inas-th">% inasistencia</th>
-                      <th className="inas-th">Faltas consecutivas</th>
+                      <th className="inas-th">Faltas al hilo</th>
                       <th className="inas-th">Última falta</th>
+                      <th className="inas-th inas-th-right">Faltas de este alumno</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -100,8 +124,8 @@ export default function InasistenciasAsistencia({ maps }) {
                             <AlertTriangle className="inas-faltas-icon" /> {a.inasistencias}
                           </span>
                         </td>
-                        <td className="inas-td inas-td-amber">{a.justificados}</td>
-                        <td className="inas-td inas-td-blue">{a.tardanzas}</td>
+                        <td className="inas-td inas-td-muted">{a.justificados}</td>
+                        <td className="inas-td inas-td-muted">{a.tardanzas}</td>
                         <td className="inas-td">
                           <span className={`inas-chip ${
                             a.porcentaje_inasistencia >= 30
@@ -111,8 +135,26 @@ export default function InasistenciasAsistencia({ maps }) {
                             {fmtPct(a.porcentaje_inasistencia)}
                           </span>
                         </td>
-                        <td className="inas-td">{a.faltas_consecutivas > 0 ? `${a.faltas_consecutivas} ` : "—"}{a.faltas_consecutivas > 0 && "clases"}</td>
+                        <td className="inas-td">
+                          {a.faltas_consecutivas > 0
+                            ? `${a.faltas_consecutivas} ${a.faltas_consecutivas === 1 ? "clase" : "clases"}`
+                            : "—"}
+                        </td>
                         <td className="inas-td inas-td-muted">{fmtFecha(a.ultima_falta)}</td>
+                        <td className="inas-td">
+                          {a.dni ? (
+                            <button
+                              type="button"
+                              onClick={() => verFaltas(a)}
+                              title="Ver en el Historial las clases a las que faltó"
+                              className="inas-btn-ver"
+                            >
+                              <History className="inas-btn-ver-icon" /> Ver faltas
+                            </button>
+                          ) : (
+                            <span className="inas-sin-dni">Sin DNI cargado</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

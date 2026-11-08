@@ -420,6 +420,12 @@
   white-space: nowrap;
 }
 
+/* "85,00 % de asistencia · 30 alumnos marcados" debajo del resumen. */
+.clase-card-extra { font-size: var(--text-xs); color: var(--gray-500); }
+
+/* Quién pasó la lista. */
+.clase-card-responsable { font-size: var(--text-xs); color: var(--gray-500); }
+
 .clase-card-acciones { display: flex; align-items: center; gap: var(--sp-2); }
 
 .clase-btn-ver {

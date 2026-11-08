@@ -9,7 +9,9 @@ import { mensajeAmable } from "../../lib/errores";
 import { formatearFecha } from "../../lib/fechas";
 import useCierreAnimado from "../../lib/useCierreAnimado";
 import { bloquearScroll } from "../../lib/lockScroll";
+import { puede } from "../../lib/permisos";
 import { useToast } from "../Common/Toast";
+import { useAuth } from "../../../modulos/auth/AuthContext";
 import "./ManualModal.css";
 
 // Componente: ManualModal
@@ -19,10 +21,24 @@ import "./ManualModal.css";
 //   open    - Booleano que controla la visibilidad del modal.
 //   onClose - Funcion para cerrar el modal.
 
+// El build copia el manual de usuario y su índice dentro del dist (ver
+// vite.config.js). Si el server no tiene la carpeta docs/, la lista se lee de
+// ahí y el PDF se pide como archivo estático.
+const urlEstatica = (ruta) => `${import.meta.env.BASE_URL || "/"}${ruta}`;
+
+async function listaDelDist() {
+  const res = await fetch(urlEstatica("manuales/indice.json"), { cache: "no-cache" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return ((data && data.manuales) || []).map((m) => ({ ...m, estatico: true }));
+}
+
 const ManualModal = ({ open, onClose }) => {
   const showToast = useToast();
+  const { user } = useAuth();
   const [manuales, setManuales] = useState(null);
   const [error, setError] = useState("");
+  const [aviso, setAviso] = useState("");
   const [ocupado, setOcupado] = useState(null);
   const { montado, cerrando } = useCierreAnimado(open);
 
@@ -31,11 +47,38 @@ const ManualModal = ({ open, onClose }) => {
     let vivo = true;
     setManuales(null);
     setError("");
-    apiGet("/manuales")
-      .then((data) => { if (vivo) setManuales((data && data.manuales) || []); })
-      .catch((e) => { if (vivo) setError(mensajeAmable(e, "No se pudo leer la lista de manuales.")); });
-    return () => { vivo = false; };
-  }, [open]);
+    setAviso("");
+    (async () => {
+      let lista = [];
+      let falloApi = null;
+      try {
+        const data = await apiGet("/manuales");
+        lista = (data && data.manuales) || [];
+      } catch (e) {
+        falloApi = e;
+      }
+      // Sin respuesta o sin PDFs en el server: se usa lo que trae el propio dist
+      // (solo el manual de usuario; el técnico no sale del backend).
+      if (!lista.length && puede(user, "manuales.ver")) {
+        try {
+          lista = await listaDelDist();
+        } catch {
+          lista = [];
+        }
+      }
+      if (!vivo) return;
+      if (!lista.length) {
+        if (falloApi) setError(mensajeAmable(falloApi, "No se pudo leer la lista de manuales."));
+        else setAviso("Todavía no hay manuales cargados en el servidor.");
+        setManuales([]);
+        return;
+      }
+      setManuales(lista);
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [open, user]);
 
   useEffect(() => {
     if (!open) return;
@@ -52,6 +95,14 @@ const ManualModal = ({ open, onClose }) => {
   const pedirPdf = async (m) => {
     setOcupado(m.clave);
     try {
+      if (m.estatico) {
+        const res = await fetch(urlEstatica(m.url), { cache: "no-cache" });
+        if (!res.ok) throw new Error(`El manual ${m.clave} no está en el servidor.`);
+        const raw = await res.blob();
+        // Algunos servers entregan el PDF como octet-stream y el navegador lo
+        // descarga en vez de abrirlo: el tipo lo ponemos nosotros.
+        return raw.type === "application/pdf" ? raw : new Blob([raw], { type: "application/pdf" });
+      }
       return await apiBlob(`/manuales/${m.clave}`);
     } catch (e) {
       showToast(mensajeAmable(e, "No se pudo abrir el manual. Revisá tu conexión."), "error");
@@ -108,10 +159,8 @@ const ManualModal = ({ open, onClose }) => {
 
               {error && <div className="mm-error">{error}</div>}
 
-              {manuales && manuales.length === 0 && (
-                <div className="mm-error">
-                  Todavía no hay manuales cargados en el servidor.
-                </div>
+              {manuales && manuales.length === 0 && !error && (
+                <div className="mm-vacio">{aviso}</div>
               )}
 
               {manuales && manuales.map((m) => (

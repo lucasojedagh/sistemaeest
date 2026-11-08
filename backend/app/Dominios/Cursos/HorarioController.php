@@ -171,6 +171,7 @@ class HorarioController extends Controller
         if (!$user) {
             abort(401, 'No autorizado. Iniciá sesión para ver el horario.');
         }
+        $this->assertPuedeImprimir($req);
 
         $anio     = $req->integer('anio');
         $division = strtoupper(trim((string) $req->query('division', '')));
@@ -301,6 +302,53 @@ class HorarioController extends Controller
         $grupo = $payload['grupo'] ?? null;
         $validDias = array_values(self::DIAS);   // ['Lun','Mar','Mie','Jue','Vie']
 
+        // Profesores existentes: la columna profesor_id no tiene clave foránea,
+        // así que un id inventado se guardaba como huérfano y la planilla
+        // imprimía una celda sin docente. Se valida antes de tocar la base.
+        $profesoresValidos = DB::table('profesores')->pluck('id')->all();
+
+        // Hora manual del módulo: la columna es TIME y un texto suelto
+        // ("ocho", "8am") reventaba con un 500 dentro de la transacción.
+        $horaValida = fn($v) => is_string($v)
+            && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $v) === 1;
+
+        // Unificamos TODOS los slots que debemos procesar (BASE + payload)
+        $allSlots = $this->collectAllSlots([], $payload);
+
+        // Se valida la grilla entera antes de escribir: así una celda mala
+        // devuelve 422 y no deja el horario guardado a medias.
+        $errores = [];
+        foreach ($allSlots as $slotRaw) {
+            $diasPayload = $payload[$slotRaw] ?? $payload[SlotKey::normalize($slotRaw)] ?? [];
+            if (!is_array($diasPayload)) continue;
+
+            foreach ($diasPayload as $diaKey => $celda) {
+                if (!in_array($diaKey, $validDias, true)) continue;
+                if (!is_array($celda) || trim((string)($celda['materia'] ?? '')) === '') continue;
+
+                $etiqueta = $diaKey . ' ' . SlotKey::normalize($slotRaw);
+
+                $profRaw = $celda['profesor_id'] ?? $celda['profesorId'] ?? null;
+                if ($profRaw !== null && $profRaw !== '' && !in_array((int)$profRaw, $profesoresValidos, true)) {
+                    $errores[] = 'El profesor indicado en ' . $etiqueta . ' no existe.';
+                }
+
+                foreach (['horaInicio' => 'inicio', 'horaFin' => 'fin'] as $campo => $nombre) {
+                    $valor = $celda[$campo] ?? null;
+                    if (($valor !== null && $valor !== '') && !$horaValida($valor)) {
+                        $errores[] = 'La hora de ' . $nombre . ' de ' . $etiqueta . ' tiene que ser HH:MM (ej. 07:30).';
+                    }
+                }
+            }
+        }
+
+        if ($errores) {
+            return response()->json([
+                'message' => $errores[0],
+                'errors'  => ['horario' => array_values(array_unique($errores))],
+            ], 422);
+        }
+
         // Materias del año indexadas por nombre normalizado. Hay homónimas que solo
         // cambian de especialidad ("DIBUJO TECNOLÓGICO" en electromecánica y en MMO):
         // se ordena para que la del curso quede la última y gane la colisión en keyBy.
@@ -310,9 +358,6 @@ class HorarioController extends Controller
         $matByName = $materias
             ->sortBy(fn($m) => $espCurso !== null && $m->especialidad === $espCurso ? 1 : 0)
             ->keyBy(fn($m) => $normName((string) $m->nombre));
-
-        // Unificamos TODOS los slots que debemos procesar (BASE + payload)
-        $allSlots = $this->collectAllSlots([], $payload);
 
         DB::transaction(function () use ($payload, $validDias, $curso, $matByName, $anio, $normName, $allSlots, $grupo) {
 

@@ -88,7 +88,11 @@ class AdminUsersController extends Controller
     /** Opciones de roles (útil para el modal del front) */
     public function roles()
     {
-        return \App\Support\RoleHierarchy::all();
+        // Sin el rango admin: es único, así que no es una opción para nadie.
+        return array_values(array_filter(
+            \App\Support\RoleHierarchy::all(),
+            [RoleHierarchy::class, 'esAsignable']
+        ));
     }
 
     // Obtiene el listado completo de usuarios con campos seleccionados, ordenado por ID descendente.
@@ -135,7 +139,14 @@ class AdminUsersController extends Controller
     /** Usuarios pendientes de verificación */
     public function pending(Request $r)
     {
-        return User::select('id','name','apellido','email','dni','role','rol_solicitado','status','avatar','created_at')
+        // Misma regla que el listado: sin la casilla de datos personales, la
+        // cola de verificación tampoco muestra el DNI.
+        $cols = ['id','name','apellido','email','dni','role','rol_solicitado','status','avatar','created_at'];
+        if (!$this->userCanSeeFullFicha($r)) {
+            $cols = array_values(array_diff($cols, ['dni']));
+        }
+
+        return User::select($cols)
             ->where('status', 'pending')
             ->orderBy('created_at', 'asc')
             ->paginate(\App\Support\Paginacion::porPagina($r, 100, 200));
@@ -159,6 +170,9 @@ class AdminUsersController extends Controller
         // Al activar, el admin puede asignar el rol real (el solicitado por el usuario
         // o el que corresponda). No se puede asignar un rol superior al propio.
         if ($data['status'] === 'active' && !empty($data['role'])) {
+            if (!RoleHierarchy::esAsignable($data['role'])) {
+                return response()->json(['message' => RoleHierarchy::mensajeRolAdminUnico()], 422);
+            }
             if (!RoleHierarchy::canManage($r->user()->role, $data['role'])) {
                 return response()->json(['message' => 'No podés asignar un rol superior al tuyo.'], 403);
             }
@@ -179,7 +193,8 @@ class AdminUsersController extends Controller
             $u->save();
         }
 
-        ActivityLogger::log($r, ($data['status'] === 'active' ? 'Aprobó' : 'Rechazó') . ' cuenta de ' . $u->email, 'user.verify', 'User', $u->id, ['status' => $oldStatus, 'role' => $oldRole], ['status' => $data['status'], 'role' => $u->role]);
+        $aprobo = $data['status'] === 'active';
+        ActivityLogger::log($r, ($aprobo ? 'Aprobó' : 'Rechazó') . ' cuenta de ' . $u->email, 'user.' . ($aprobo ? 'aprobar' : 'rechazar'), 'User', $u->id, ['status' => $oldStatus, 'role' => $oldRole], ['status' => $data['status'], 'role' => $u->role]);
 
         return $u->only('id','name','apellido','email','role','rol_solicitado','status','created_at');
     }
@@ -197,6 +212,9 @@ class AdminUsersController extends Controller
     public function saveAssignments(Request $r, $id)
     {
         $u = User::findOrFail($id);
+        // Los cursos asignados son datos de la cuenta: rige la misma jerarquía
+        // que el resto de las escrituras (el jefe no toca a un directivo).
+        $this->assertCanManageUser($r, $u);
 
         $data = $r->validate([
             'asignaciones' => ['present', 'array'],
@@ -204,7 +222,13 @@ class AdminUsersController extends Controller
             'asignaciones.*.division' => ['nullable', 'string', 'max:1'],
             // Materias que ensena en ese curso (solo rol profesor): se guardan en su ficha
             'asignaciones.*.materias'     => ['nullable', 'array'],
-            'asignaciones.*.materias.*'   => ['integer', 'min:1'],
+            // Sin el "exists" el id inventado llegaba hasta la clave foránea de
+            // profesor_asignaciones y MySQL contestaba con un 500.
+            'asignaciones.*.materias.*'   => ['integer', 'min:1', 'exists:materias,id'],
+        ], [
+            // El pedido llegó sin la clave (no con lista vacía): es un problema
+            // de la pantalla, y hay que decirlo así y no con "validation.present".
+            'asignaciones.present' => 'No llegaron las asignaciones del usuario. Recargá la pantalla y volvé a intentar.',
         ]);
 
         // Normaliza a pares {anio, division} ordenados, sin duplicados.
@@ -352,6 +376,11 @@ class AdminUsersController extends Controller
             'role'     => ['required','in:'.implode(',', \App\Support\RoleHierarchy::all())],
         ]);
 
+        // El rango de administrador no se reparte: es la única cuenta del sistema.
+        if (!RoleHierarchy::esAsignable($data['role'])) {
+            return response()->json(['message' => RoleHierarchy::mensajeRolAdminUnico()], 422);
+        }
+
         // No se puede crear un usuario con un rol superior al propio.
         if (!RoleHierarchy::canManage($r->user()->role, $data['role'])) {
             return response()->json(['message' => 'No podés crear usuarios con un rol superior al tuyo.'], 403);
@@ -400,7 +429,7 @@ class AdminUsersController extends Controller
         $rules = [
             'name'     => ['required','string','max:255'],
             'apellido' => ['required','string','max:255'],
-            'dni'      => ['nullable','string','max:15','unique:users,dni,'.$u->id],
+            'dni'      => ['nullable','string','max:15','unique:users,dni,'.$u->id,'regex:/^\d{6,8}$/'],
             'email'    => ['required','email','max:255','unique:users,email,'.$u->id, new \App\Support\Rules\EmailInstitucional],
             'password' => ['nullable', Password::min(8)],
         ];
@@ -467,11 +496,13 @@ class AdminUsersController extends Controller
         }
 
         // Se manda la foto completa: el diff centralizado deja solo lo que cambió.
-        // La contraseña se marca como texto para no guardar el hash.
+        // La clave se marca con un rótulo en español y no con la clave 'password':
+        // ActivityDiff la esconde siempre, y con el par vacío el logger descartaba
+        // la entrada, así que cambiar solo la clave no dejaba ninguna huella.
         $newVals = ['name' => $u->name, 'apellido' => $u->apellido, 'email' => $u->email, 'dni' => $u->dni];
         if ($cambioPassword) {
-            $oldVals = ['password' => '(anterior)'];
-            $newVals['password'] = 'actualizada';
+            $oldVals = ['Contraseña' => '(anterior)'];
+            $newVals['Contraseña'] = 'actualizada';
         } else {
             $oldVals = $old;
         }
@@ -587,6 +618,19 @@ class AdminUsersController extends Controller
 
         $u = User::findOrFail($id);
         $this->assertCanManageUser($r, $u, false);
+
+        // El rango de administrador es unico: no se da (aunque el actor sea admin,
+        // lo que canManage() permitía hasta acá) y tampoco se quita: si se
+        // reasignara la cuenta admin, el sistema se queda sin la unica cuenta
+        // que puede crear otra.
+        if (!RoleHierarchy::esAsignable($data['role'])) {
+            return response()->json(['message' => RoleHierarchy::mensajeRolAdminUnico()], 422);
+        }
+        if ($u->role === RoleHierarchy::ADMIN) {
+            return response()->json([
+                'message' => 'La cuenta de Administrador es única: su rango no se cambia desde acá.',
+            ], 422);
+        }
 
         // No se puede asignar un rol que el actor no pueda gestionar (evita escalada a admin/directivo).
         if (!RoleHierarchy::canManage($r->user()->role, $data['role'])) {

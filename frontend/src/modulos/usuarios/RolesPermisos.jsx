@@ -1,16 +1,17 @@
 // Pestaña "Roles y permisos" del módulo Usuarios.
-// Muestra el catálogo de todas las acciones del sistema y deja marcar qué puede
-// hacer cada rol, sobre qué datos y qué ve en el menú lateral.
-// Solo entra el administrador y el jefe de preceptores.
+// Un bloque por módulo del sistema: si aparece en el menú, qué puede ver del
+// módulo, qué puede modificar y qué acciones tiene. Solo entra el administrador
+// y el jefe de preceptores.
 //
 // Reglas que refleja la pantalla (las mismas del backend):
-//  - Rol de sistema: su base es el rango (nivel), así que solo se le QUITAN permisos.
-//  - Rol personalizado: se arma desde cero, con una plantilla o copiando a un rol existente.
-//  - Permiso y alcance son dos filtros en serie: primero la acción, después los datos.
-//    Un alcance nunca habilita una acción que el permiso bloquea, solo la restringe.
+//  - Todos los roles se editan igual: la lista de acciones marcada es la lista
+//    del rol, sin tope de rango. El rango decide con qué permisos nace el rol,
+//    su alcance de fábrica y quién puede modificarlo.
+//  - Lo único que no se puede desmarcar es la gestión de roles (Admin y Jefe de
+//    Preceptores) y el piso del Admin, para que la única cuenta no se cierre afuera.
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
-import { ShieldCheck, Plus, Save, Trash2, RotateCcw, Users, Lock, Check, X, Search, ListChecks, Layers, PanelsTopLeft } from "lucide-react";
+import { ShieldCheck, Plus, Save, Trash2, RotateCcw, Users, Lock, Check, X, Search, Eye, PencilLine, Layers, ChevronDown, ChevronRight } from "lucide-react";
 import { apiRolesConfig, apiCrearRol, apiEditarRol, apiEliminarRol } from "../../compartido/api/roles";
 import { setRoleDetalle, cargarRoleDetalle, rolLabel } from "../auth/roles";
 import { useToast } from "../../compartido/componentes/Common/Toast";
@@ -32,13 +33,8 @@ const NIVEL_LABEL = {
 const SOLO_SISTEMA = new Set(["roles.configurar"]);
 const ROLES_GESTION = ["admin", "jefe_preceptores"];
 
-// Las tres preguntas que se le responden a un rol: acción, datos y menú.
-const SECCIONES = [
-  { id: "acciones", label: "Qué puede hacer", Icon: ListChecks },
-  { id: "datos", label: "Sobre qué datos", Icon: Layers },
-  { id: "menu", label: "Qué ve en el menú", Icon: PanelsTopLeft },
-];
-
+// Un bloque por módulo: los datos del módulo se acotan con el alcance del área.
+// "Ver" y "modificar" nunca quedan por encima del alcance de lectura.
 const ALCANCE_ETIQUETA = { todos: "Todos", asignados: "Asignados", ninguno: "Nada" };
 const pesoAlcance = { ninguno: 0, asignados: 1, todos: 2 };
 
@@ -53,7 +49,6 @@ const clonarAlcance = (mapa) => {
 
 // Módulos que el rol tiene hoy: si no está configurado, los que le tocan por rango.
 const modulosBase = (rol) => rol?.modulos ?? rol?.modulos_defecto ?? [];
-const firmaModulos = (lista) => [...lista].sort().join(",");
 
 export default function RolesPermisos() {
   const [confirmAction, confirmModal] = useConfirmAction();
@@ -65,7 +60,8 @@ export default function RolesPermisos() {
   const [error, setError] = useState("");
   const [selRol, setSelRol] = useState(null);
   const [edicion, setEdicion] = useState(null);
-  const [seccion, setSeccion] = useState("acciones");
+  // Módulos que el usuario contrajo en la pantalla; arrancan todos abiertos.
+  const [cerrados, setCerrados] = useState(() => new Set());
   const [buscador, setBuscador] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [nuevoAbierto, setNuevoAbierto] = useState(false);
@@ -106,15 +102,48 @@ export default function RolesPermisos() {
   // Nadie puede darle a un rol más rango del que tiene quien lo edita.
   const miNivel = Number(dato?.mi_nivel || 0);
   const nivelesPosibles = [1, 2, 3, 4, 5].filter((n) => n <= miNivel || n === rol?.nivel);
+  // Lo único que el Admin no puede desmarcar: sin esto no volvería a Usuarios.
+  const pisoAdmin = useMemo(() => new Set(dato?.piso_admin || []), [dato]);
+  // Casillas que no se ofrecen para un rol, porque el backend no las acepta fuera
+  // de quien las tiene de verdad:
+  //  - los respaldos (bajar o reemplazar la base) solo viven en el rol Admin;
+  //  - la gestión de roles solo la tienen Admin y Jefe por su nombre de rol, así
+  //    que en un rol personalizado la casilla no marcaría nada.
+  const ocultasDe = useCallback((r) => {
+    const set = new Set();
+    if (r?.rol !== "admin") (dato?.solo_admin || []).forEach((c) => set.add(c));
+    if (r?.tipo === "personalizado") SOLO_SISTEMA.forEach((c) => set.add(c));
+    return set;
+  }, [dato]);
+  const ocultas = useMemo(() => ocultasDe(rol), [ocultasDe, rol]);
 
+  // Un bloque por módulo: sus acciones, el área de datos y las entradas del menú.
+  const bloquesCrudos = useMemo(() => dato?.bloques || [], [dato]);
+  const bloques = useMemo(
+    () => bloquesCrudos
+      .map((b) => ({ ...b, items: b.items.filter((i) => !ocultas.has(i.clave)) }))
+      .filter((b) => b.items.length > 0),
+    [bloquesCrudos, ocultas]
+  );
   // Lista completa de claves del catálogo: es el total sobre el que se cuenta.
   const todas = useMemo(
-    () => (dato?.grupos || []).flatMap((g) => g.items.map((i) => i.clave)),
-    [dato]
+    () => bloques.flatMap((b) => b.items.map((i) => i.clave)),
+    [bloques]
+  );
+  const totalCatalogo = useMemo(
+    () => bloquesCrudos.reduce((n, b) => n + b.items.length, 0),
+    [bloquesCrudos]
   );
   const etiquetasAlcance = dato?.etiquetas_alcance || ALCANCE_ETIQUETA;
-  const areas = dato?.areas || [];
-  const modulosCatalogo = dato?.modulos || {};
+  // Los módulos del menú los aportan los bloques: cada acción transversal vive
+  // dentro del módulo que la usa, así no hay dos listas que se desincronicen.
+  const modulosCatalogo = useMemo(() => {
+    const out = {};
+    bloques.forEach((b) => b.modulos.forEach((m) => { out[m.id] = m.nombre; }));
+    return out;
+  }, [bloques]);
+  const totalModulos = Object.keys(modulosCatalogo).length;
+  const areasConDatos = bloques.filter((b) => b.area).length;
 
   // El estado editable arranca con lo que el rol tiene hoy.
   useEffect(() => {
@@ -122,7 +151,10 @@ export default function RolesPermisos() {
       setEdicion(null);
       return;
     }
-    const activos = rol.efectivos ?? rol.permitidos ?? [];
+    // Lo que el rol tiene hoy, sin las casillas que no se le muestran: si no se
+    // filtraran, Guardar las mandaría de vuelta y el rol quedaría con un permiso
+    // que nadie puede usar ni ver.
+    const activos = (rol.efectivos ?? rol.permitidos ?? []).filter((c) => !ocultas.has(c));
     setEdicion({
       nombre: rol.nombre,
       nivel: rol.nivel,
@@ -131,48 +163,61 @@ export default function RolesPermisos() {
       alcance: clonarAlcance(rol.alcance),
       modulos: new Set(modulosBase(rol)),
     });
-    setSeccion("acciones");
+    setCerrados(new Set());
   }, [rol?.rol, rol?.nivel]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Qué se salió de lo guardado, en cada una de las tres dimensiones.
-  const desvios = useMemo(() => {
-    if (!rol || !edicion) return { permisos: 0, datos: 0, menu: 0 };
-    const actuales = new Set(rol.efectivos ?? rol.permitidos ?? []);
-    let permisos = 0;
-    actuales.forEach((c) => { if (!edicion.activos.has(c)) permisos++; });
-    edicion.activos.forEach((c) => { if (!actuales.has(c)) permisos++; });
+  // Lo que el rol tiene guardado, en las tres dimensiones de cada bloque.
+  const base = useMemo(() => ({
+    acciones: new Set(rol?.efectivos ?? rol?.permitidos ?? []),
+    alcance: rol?.alcance || {},
+    modulos: new Set(modulosBase(rol)),
+  }), [rol]);
 
-    const baseAlcance = rol.alcance || {};
-    let datos = 0;
-    Object.keys(baseAlcance).forEach((area) => {
-      const b = baseAlcance[area];
-      const h = edicion.alcance[area] || b;
-      if (b.ver !== h.ver || b.editar !== h.editar) datos++;
+  // Cambios sin guardar por bloque: acciones + alcance + visibilidad en el menú.
+  const desvioBloque = useCallback((b) => {
+    if (!edicion) return 0;
+    let n = 0;
+    b.items.forEach((i) => {
+      if (base.acciones.has(i.clave) !== edicion.activos.has(i.clave)) n++;
     });
+    if (b.area) {
+      const g = base.alcance[b.area] || { ver: "ninguno", editar: "ninguno" };
+      const h = edicion.alcance[b.area] || g;
+      if (g.ver !== h.ver || g.editar !== h.editar) n++;
+    }
+    b.modulos.forEach((m) => {
+      if (base.modulos.has(m.id) !== edicion.modulos.has(m.id)) n++;
+    });
+    return n;
+  }, [edicion, base]);
 
-    const menu = firmaModulos(edicion.modulos) === firmaModulos(modulosBase(rol)) ? 0 : 1;
-    return { permisos, datos, menu };
-  }, [rol, edicion]);
+  const desviosTotales = useMemo(
+    () => bloques.reduce((acc, b) => acc + desvioBloque(b), 0),
+    [bloques, desvioBloque]
+  );
 
-  const sucio = desvios.permisos > 0 || desvios.datos > 0 || desvios.menu > 0 || Boolean(
+  const sucio = desviosTotales > 0 || Boolean(
     !esSistema && edicion && rol && (
       edicion.nombre !== rol.nombre || edicion.nivel !== rol.nivel || (edicion.descripcion || "") !== (rol.descripcion || "")
     )
   );
 
-  // Por qué una casilla no se puede tocar.
+  // Por qué una casilla no se puede tocar. Fuera de estos dos casos, todas las
+  // acciones se pueden marcar o desmarcar en cualquier rol, sea del sistema o no.
   const motivoBloqueo = useCallback(
     (i) => {
       if (!editable) return "Tu rango no alcanza para modificar este rol";
-      if (esSistema && i.nivel > (rol?.nivel ?? 0)) return `Fuera del rango de este rol: pide rango ${i.nivel}`;
       if (SOLO_SISTEMA.has(i.clave)) {
         return ROLES_GESTION.includes(rol?.rol)
           ? "La gestión de roles siempre queda en Admin y Jefe de Preceptores"
           : "La gestión de roles solo la tienen el Admin y el Jefe de Preceptores";
       }
+      if (rol?.rol === "admin" && pisoAdmin.has(i.clave)) {
+        return "El Admin no puede quitarse esto: es lo único que lo deja entrar a Usuarios y reponer un acceso.";
+      }
       return null;
     },
-    [editable, esSistema, rol]
+    [editable, rol, pisoAdmin]
   );
 
   const marcar = (clave, valor) => {
@@ -216,26 +261,35 @@ export default function RolesPermisos() {
     setEdicion((e) => (e ? { ...e, modulos: new Set(modulosBase(rol)) } : e));
   };
 
+  const alternarBloque = (id) => {
+    setCerrados((c) => {
+      const siguiente = new Set(c);
+      if (siguiente.has(id)) siguiente.delete(id);
+      else siguiente.add(id);
+      return siguiente;
+    });
+  };
+
+  const todoContraido = cerrados.size >= bloques.length && bloques.length > 0;
+  const alternarTodos = () => {
+    setCerrados(todoContraido ? new Set() : new Set(bloques.map((b) => b.id)));
+  };
+
   const guardar = async () => {
     if (!rol || !edicion) return;
     setGuardando(true);
     try {
-      const comun = { alcance: edicion.alcance, modulos: [...edicion.modulos] };
-      if (esSistema) {
-        // La quita solo se calcula sobre la base del rol: lo que nunca tuvo por su
-        // rango no es una quita, y registrarlas cambiaría el rol a modo filtro.
-        const base = rol.permitidos || [];
-        const negados = base.filter((c) => !edicion.activos.has(c));
-        await apiEditarRol(rol.rol, { negados, ...comun });
-      } else {
-        await apiEditarRol(rol.rol, {
+      // La lista marcada es la lista del rol, igual que en un personalizado:
+      // el backend ya no calcula quitas sobre el rango.
+      const cuerpo = { permitidos: [...edicion.activos], alcance: edicion.alcance, modulos: [...edicion.modulos] };
+      if (!esSistema) {
+        Object.assign(cuerpo, {
           nombre: edicion.nombre,
           nivel: Number(edicion.nivel),
           descripcion: edicion.descripcion || null,
-          permitidos: [...edicion.activos],
-          ...comun,
         });
       }
+      await apiEditarRol(rol.rol, cuerpo);
       await cargarRoleDetalle().then((d) => setRoleDetalle(d));
       await cargar();
       showToast("Permisos del rol actualizados", "success");
@@ -244,6 +298,11 @@ export default function RolesPermisos() {
     } finally {
       setGuardando(false);
     }
+  };
+
+  // Volver a la lista de acciones que le corresponde al rango del rol.
+  const restaurarPermisos = () => {
+    setEdicion((e) => (e ? { ...e, activos: new Set(rol?.base_rango ?? []) } : e));
   };
 
   const restaurar = () => {
@@ -316,29 +375,36 @@ export default function RolesPermisos() {
     );
   }
 
-  const cantidad = (r) => (r.efectivos ?? r.permitidos ?? []).length;
+  // Se cuenta sobre lo que el rol puede tener: las casillas que no se muestran
+  // (respaldos fuera del Admin, gestión de roles en un personalizado) tampoco
+  // entran en el total, si no el chip siempre marcaría una diferencia falsa.
+  const cantidad = (r) => (r.efectivos ?? r.permitidos ?? []).filter((c) => !ocultasDe(r).has(c)).length;
+  const totalDe = (r) => totalCatalogo - ocultasDe(r).size;
   const busqueda = buscador.trim().toLowerCase();
-  const gruposFiltrados = (dato?.grupos || [])
-    .map((g) => ({
-      ...g,
-      items: g.items.filter((i) => !busqueda || `${i.label} ${i.desc} ${i.clave}`.toLowerCase().includes(busqueda)),
-    }))
-    .filter((g) => g.items.length > 0);
+  // La búsqueda deja a la vista solo los módulos que tienen alguna acción nombrada.
+  const bloquesFiltrados = busqueda
+    ? bloques
+        .map((b) => ({
+          ...b,
+          items: b.items.filter((i) => `${i.label} ${i.desc} ${i.clave}`.toLowerCase().includes(busqueda)),
+        }))
+        .filter((b) => b.items.length > 0)
+    : bloques;
 
-  // Resumen en texto plano: qué puede hacer, sobre qué datos y qué ve en el menú.
+  // Resumen en texto plano: acciones habilitadas, qué ve de cada módulo y el menú.
   const resumenLineas = (() => {
     if (!rol || !edicion) return [];
     const out = [`${edicion.activos.size} de ${todas.length} acciones habilitadas.`];
-    const visibles = areas.filter((a) => {
-      const r = edicion.alcance[a.area];
+    const visibles = bloques.filter((b) => {
+      const r = b.area && edicion.alcance[b.area];
       return r && !(r.ver === "ninguno" && r.editar === "ninguno");
     });
-    const datos = visibles.map((a) => {
-      const r = edicion.alcance[a.area];
+    const datos = visibles.map((b) => {
+      const r = edicion.alcance[b.area];
       const mismo = r.ver === r.editar
         ? `${etiquetasAlcance[r.ver] || r.ver}`
         : `ve ${etiquetasAlcance[r.ver] || r.ver} / modifica ${etiquetasAlcance[r.editar] || r.editar}`;
-      return `${a.nombre}: ${mismo}`;
+      return `${b.nombre}: ${mismo}`;
     });
     out.push(datos.length ? `Datos — ${datos.join(" · ")}.` : "Datos: no alcanza ningún módulo.");
     const visib = Object.keys(modulosCatalogo).filter((m) => edicion.modulos.has(m));
@@ -352,9 +418,10 @@ export default function RolesPermisos() {
         <div>
           <h2 className="rp-title">Roles y permisos</h2>
           <p className="rp-sub">
-            Elegí un rol y marcá qué puede hacer, sobre qué datos y qué ve en el menú.
-            Los roles del sistema entran por su rango: a esos solo se les quitan permisos.
-            Los personalizados se arman desde cero, con una plantilla o copiando a un rol existente.
+            Elegí un rol y configurá módulo por módulo: si lo ve en el menú, qué puede ver adentro,
+            qué puede modificar y qué acciones tiene. Todos los roles se editan igual: el rango define
+            con qué permisos nace cada rol y qué pantalla le corresponde, pero la lista marcada es la
+            que manda. Los personalizados se arman desde cero, con una plantilla o copiando a un rol existente.
           </p>
         </div>
         <button
@@ -378,8 +445,9 @@ export default function RolesPermisos() {
               key={r.rol}
               rol={r}
               activo={r.rol === selRol}
-              total={todas.length}
-              areas={areas.length}
+              usados={cantidad(r)}
+              total={totalDe(r)}
+              areas={areasConDatos}
               onClick={() => setSelRol(r.rol)}
             />
           ))}
@@ -393,8 +461,9 @@ export default function RolesPermisos() {
               key={r.rol}
               rol={r}
               activo={r.rol === selRol}
-              total={todas.length}
-              areas={areas.length}
+              usados={cantidad(r)}
+              total={totalDe(r)}
+              areas={areasConDatos}
               onClick={() => setSelRol(r.rol)}
             />
           ))}
@@ -457,9 +526,9 @@ export default function RolesPermisos() {
                 </span>
                 <span className="rp-meta-dato"><Users size={13} /> {rol.usuarios} cuenta(s)</span>
                 <span className="rp-meta-dato">{cantidad(rol)} de {todas.length} permisos</span>
-                {esSistema && (rol.negados || []).length > 0 && (
-                  <span className="rp-meta-aviso">
-                    {rol.negados.length} permiso(s) quitado(s) — el rango no alcanza para sumarle otros nuevos
+                {esSistema && rol.a_medida && (
+                  <span className="rp-meta-dato" title="Alguien le cambió la lista de permisos: no es exactamente la que da el rango">
+                    <PencilLine size={13} /> ajustado a mano
                   </span>
                 )}
                 {!editable && (
@@ -484,62 +553,180 @@ export default function RolesPermisos() {
                 ))}
               </div>
 
-              <div className="rp-tabs" role="tablist">
-                {SECCIONES.map(({ id, label, Icon }) => {
-                  const desvio = desvios[id === "acciones" ? "permisos" : id === "datos" ? "datos" : "menu"];
-                  return (
-                    <button
-                      key={id}
-                      role="tab"
-                      aria-selected={seccion === id}
-                      className={`rp-tab ${seccion === id ? "rp-tab-activo" : ""}`}
-                      onClick={() => setSeccion(id)}
-                    >
-                      <Icon size={15} /> {label}
-                      {desvio > 0 && <span className="rp-tab-punto" title="Cambios sin guardar en esta solapa">{desvio}</span>}
-                    </button>
-                  );
-                })}
+              <div className="rp-barra">
+                <span className="rp-meta-dato"><Check size={13} /> {edicion.activos.size} de {todas.length} acciones habilitadas</span>
+                <span className="rp-meta-dato"><Layers size={13} /> {edicion.modulos.size} de {totalModulos} módulos visibles en el menú</span>
+                {desviosTotales > 0 && (
+                  <span className="rp-cambio" title="Cambios sin guardar en este rol">{desviosTotales} cambio(s) sin guardar</span>
+                )}
+                <span className="rp-barra-botones">
+                  <button className="rp-btn rp-btn-flat" onClick={alternarTodos} title="Mostrar u ocultar el detalle de cada módulo">
+                    {todoContraido ? "Expandir todo" : "Contraer todo"}
+                  </button>
+                  <button className="rp-btn rp-btn-flat" onClick={restaurarPermisos} disabled={!editable} title="Marcar solo las acciones que le corresponden al rango del rol">
+                    <RotateCcw size={14} /> Permisos según el rango
+                  </button>
+                  <button className="rp-btn rp-btn-flat" onClick={restaurarModulos} disabled={!editable} title="Volver a la lista de módulos que le corresponde al rango">
+                    <RotateCcw size={14} /> Menú según el rango
+                  </button>
+                </span>
               </div>
 
-              {seccion === "acciones" && (
-                <>
-                  <div className="rp-buscar">
-                    <Search size={15} />
-                    <input
-                      className="rp-input"
-                      placeholder="Buscar una acción: notas, asistencia, exportar, subir archivos…"
-                      value={buscador}
-                      onChange={(e) => setBuscador(e.target.value)}
-                      aria-label="Buscar acciones"
-                    />
-                    {buscador && (
-                      <button className="rp-enlace" onClick={() => setBuscador("")}>Limpiar</button>
-                    )}
-                  </div>
+              <p className="rp-ayuda">
+                Cada bloque es un módulo del sistema. En el encabezado se marca <b>si aparece en el menú</b>:
+                ocultarlo también cierra la pantalla, aunque se escriba la dirección. Las dos filas de alcance
+                responden <b>sobre qué datos</b> — "Todos" son todos los cursos, "Asignados" son los años y
+                divisiones cargados en la cuenta (Usuarios → Asignaciones) y "Nada" esconde el módulo — y
+                "modificar" nunca puede ampliar lo que se ve. Las <b>acciones</b> mandan sobre todo: ningún
+                alcance ni módulo visible habilita una acción que el rol no tiene.
+              </p>
 
-                  {gruposFiltrados.length === 0 && (
-                    <p className="rp-vacio">Ninguna acción del sistema coincide con "{buscador}".</p>
-                  )}
+              <div className="rp-buscar">
+                <Search size={15} />
+                <input
+                  className="rp-input"
+                  placeholder="Buscar una acción: notas, asistencia, exportar, subir archivos…"
+                  value={buscador}
+                  onChange={(e) => setBuscador(e.target.value)}
+                  aria-label="Buscar acciones"
+                />
+                {buscador && (
+                  <button className="rp-enlace" onClick={() => setBuscador("")}>Limpiar</button>
+                )}
+              </div>
 
-                  <div className="rp-grupos">
-                    {gruposFiltrados.map((g) => {
-                      const marcables = g.items.filter((i) => !motivoBloqueo(i));
-                      const todoMarcado = marcables.length > 0 && marcables.every((i) => edicion.activos.has(i.clave));
-                      return (
-                        <div className="rp-grupo" key={g.grupo}>
-                          <div className="rp-grupo-head">
-                            <h3>{g.grupo}</h3>
+              {bloquesFiltrados.length === 0 && (
+                <p className="rp-vacio">Ninguna acción del sistema coincide con "{buscador}".</p>
+              )}
+
+              <div className="rp-bloques">
+                {bloquesFiltrados.map((b) => {
+                  // Con búsqueda el bloque se abre solo: si no, el resultado quedaría oculto.
+                  const abierto = busqueda ? true : !cerrados.has(b.id);
+                  const marcables = b.items.filter((i) => !motivoBloqueo(i));
+                  const todoMarcado = marcables.length > 0 && marcables.every((i) => edicion.activos.has(i.clave));
+                  const ocultoTodo = b.modulos.length > 0 && b.modulos.every((m) => !edicion.modulos.has(m.id));
+                  const regla = b.area ? (edicion.alcance[b.area] || { ver: "ninguno", editar: "ninguno" }) : null;
+                  const desvio = desvioBloque(b);
+                  return (
+                    <article className={`rp-bloque ${desvio > 0 ? "rp-bloque-tocada" : ""}`} key={b.id}>
+                      <header className="rp-bloque-head">
+                        <button
+                          type="button"
+                          className="rp-bloque-titulo"
+                          onClick={() => alternarBloque(b.id)}
+                          aria-expanded={abierto}
+                          title={abierto ? "Ocultar el detalle de este módulo" : "Ver el detalle de este módulo"}
+                        >
+                          {abierto ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          <span className="rp-bloque-nombre">{b.nombre}</span>
+                          <span className="rp-bloque-estado" title="Acciones habilitadas en este módulo">
+                            <Check size={12} /> {b.items.filter((i) => edicion.activos.has(i.clave)).length}/{b.items.length}
+                          </span>
+                          {regla && (
+                            <span
+                              className="rp-bloque-alcance"
+                              title={`Ve ${etiquetasAlcance[regla.ver] || regla.ver} · modifica ${etiquetasAlcance[regla.editar] || regla.editar}`}
+                            >
+                              <Eye size={12} /> {etiquetasAlcance[regla.ver] || regla.ver}
+                              <PencilLine size={12} /> {etiquetasAlcance[regla.editar] || regla.editar}
+                            </span>
+                          )}
+                          {desvio > 0 && <span className="rp-cambio" title="Cambios sin guardar en este módulo">{desvio}</span>}
+                        </button>
+
+                        <div className="rp-bloque-menu">
+                          {b.modulos.length === 0 ? (
+                            <span
+                              className="rp-bloque-sinmenu"
+                              title="No es un módulo del menú: son acciones que se usan adentro de otras pantallas"
+                            >
+                              Acciones transversales
+                            </span>
+                          ) : b.modulos.map((m) => {
+                            const activo = edicion.modulos.has(m.id);
+                            return (
+                              <button
+                                type="button"
+                                key={m.id}
+                                className={`rp-chip ${activo ? "rp-chip-on" : ""}`}
+                                disabled={!editable}
+                                onClick={() => marcarModulo(m.id, !activo)}
+                                title={activo
+                                  ? "Se ve en el menú: tocá para ocultarlo (la pantalla queda cerrada)"
+                                  : "Oculto en el menú: tocá para mostrarlo"}
+                              >
+                                {activo ? <Check size={13} /> : <X size={13} />} {m.nombre}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </header>
+
+                      {abierto && (
+                        <div className="rp-bloque-cuerpo">
+                          {regla ? (
+                            <div className="rp-alcan">
+                              <span className="rp-alcan-label"><Eye size={13} /> Qué puede ver</span>
+                              <div className="rp-alcan-opciones">
+                                {b.opciones.map((v) => (
+                                  <AlcanceBoton
+                                    key={v}
+                                    valor={v}
+                                    etiqueta={etiquetasAlcance[v] || ALCANCE_ETIQUETA[v] || v}
+                                    activo={regla.ver === v}
+                                    disabled={!editable}
+                                    onClick={() => marcarAlcance(b.area, "ver", v)}
+                                  />
+                                ))}
+                              </div>
+                              <span className="rp-alcan-ayuda">{b.area_ver}</span>
+
+                              <span className="rp-alcan-label"><PencilLine size={13} /> Qué puede modificar</span>
+                              <div className="rp-alcan-opciones">
+                                {b.opciones.map((v) => (
+                                  <AlcanceBoton
+                                    key={v}
+                                    valor={v}
+                                    etiqueta={etiquetasAlcance[v] || ALCANCE_ETIQUETA[v] || v}
+                                    activo={regla.editar === v}
+                                    disabled={!editable || pesoAlcance[v] > pesoAlcance[regla.ver]}
+                                    motivo={pesoAlcance[v] > pesoAlcance[regla.ver]
+                                      ? 'No se puede modificar más de lo que se ve: ampliá primero "Ver".'
+                                      : null}
+                                    onClick={() => marcarAlcance(b.area, "editar", v)}
+                                  />
+                                ))}
+                              </div>
+                              <span className="rp-alcan-ayuda">{b.area_editar}</span>
+                            </div>
+                          ) : (
+                            <p className="rp-alcan-sindatos">
+                              Estas acciones no cuelgan de un curso: valen igual para todos los datos del sistema.
+                            </p>
+                          )}
+
+                          {ocultoTodo && (
+                            <p className="rp-nota-menu">
+                              El módulo está oculto en el menú: nadie con este rol lo abre desde la barra lateral
+                              ni escribiendo la dirección. El alcance y las acciones se guardan igual, para cuando
+                              se vuelva a mostrar.
+                            </p>
+                          )}
+
+                          <div className="rp-bloque-acciones-head">
+                            <span className="rp-alcan-label">Qué puede hacer en este módulo</span>
                             <button
                               className="rp-enlace"
-                              onClick={() => marcarGrupo(g, !todoMarcado)}
+                              onClick={() => marcarGrupo(b, !todoMarcado)}
                               disabled={marcables.length === 0 || !editable}
                             >
-                              {todoMarcado ? "Quitar todos" : "Marcar todos"}
+                              {todoMarcado ? "Quitar todas" : "Marcar todas"}
                             </button>
                           </div>
+
                           <ul className="rp-items">
-                            {g.items.map((i) => {
+                            {b.items.map((i) => {
                               const activo = edicion.activos.has(i.clave);
                               const bloqueo = motivoBloqueo(i);
                               return (
@@ -556,10 +743,7 @@ export default function RolesPermisos() {
                                       <span className="rp-item-desc">{i.desc}</span>
                                     </span>
                                   </label>
-                                  <span
-                                    className="rp-item-nivel"
-                                    title={bloqueo || `Rango mínimo habitual: ${i.nivel}`}
-                                  >
+                                  <span className="rp-item-nivel" title={bloqueo || `Suele entrar con el rango ${i.nivel}; en cualquier rol se puede marcar o desmarcar`}>
                                     {bloqueo ? <Lock size={12} /> : activo ? <Check size={13} /> : <X size={13} />}
                                     <b>{i.nivel}</b>
                                   </span>
@@ -568,112 +752,11 @@ export default function RolesPermisos() {
                             })}
                           </ul>
                         </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-
-              {seccion === "datos" && (
-                <>
-                  <p className="rp-ayuda">
-                    El alcance responde <b>sobre qué datos</b>: "Todos" son todos los cursos del sistema,
-                    "Asignados" son los años y divisiones cargados en la cuenta (módulo Usuarios → Asignaciones)
-                    y "Nada" oculta el área. Se aplica encima de los permisos: ningún alcance habilita una acción bloqueada.
-                    Además <b>"modificar" nunca puede ampliar a "ver"</b>: si un área solo muestra los cursos
-                    asignados, no se puede editar ninguna otra.
-                  </p>
-                  <div className="rp-matriz">
-                    <div className="rp-matriz-cab rp-matriz-cab-area">Área</div>
-                    <div className="rp-matriz-cab">Ver</div>
-                    <div className="rp-matriz-cab">Modificar</div>
-                    {areas.map((a) => {
-                      const regla = edicion.alcance[a.area] || { ver: "ninguno", editar: "ninguno" };
-                      const guardado = rol.alcance?.[a.area] || { ver: "ninguno", editar: "ninguno" };
-                      const tocada = guardado.ver !== regla.ver || guardado.editar !== regla.editar;
-                      const sinCurso = !a.opciones.includes("asignados");
-                      return (
-                        <div className={`rp-matriz-fila ${tocada ? "rp-matriz-tocada" : ""}`} key={a.area}>
-                          <div className="rp-matriz-area">
-                            <span className="rp-matriz-nombre">{a.nombre}</span>
-                            <span className="rp-matriz-ayuda">
-                              {regla.ver === "ninguno" && regla.editar === "ninguno"
-                                ? "Oculto para este rol"
-                                : `ve ${a.ver} · modifica ${a.editar}`}
-                            </span>
-                          </div>
-                          <div className="rp-matriz-opciones">
-                            {a.opciones.map((v) => (
-                              <AlcanceBoton
-                                key={v}
-                                valor={v}
-                                etiqueta={etiquetasAlcance[v] || ALCANCE_ETIQUETA[v] || v}
-                                activo={regla.ver === v}
-                                disabled={!editable}
-                                corto={v === "asignados" && sinCurso}
-                                onClick={() => marcarAlcance(a.area, "ver", v)}
-                              />
-                            ))}
-                          </div>
-                          <div className="rp-matriz-opciones">
-                            {a.opciones.map((v) => (
-                              <AlcanceBoton
-                                key={v}
-                                valor={v}
-                                etiqueta={etiquetasAlcance[v] || ALCANCE_ETIQUETA[v] || v}
-                                activo={regla.editar === v}
-                                disabled={!editable || pesoAlcance[v] > pesoAlcance[regla.ver]}
-                                motivo={
-                                  pesoAlcance[v] > pesoAlcance[regla.ver]
-                                    ? 'No se puede modificar más de lo que se ve: ampliá primero "Ver".'
-                                    : null
-                                }
-                                corto={v === "asignados" && sinCurso}
-                                onClick={() => marcarAlcance(a.area, "editar", v)}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {!editable && <p className="rp-ayuda">Este rol no lo podés modificar: está en tu rango o arriba.</p>}
-                </>
-              )}
-
-              {seccion === "menu" && (
-                <>
-                  <p className="rp-ayuda">
-                    Los módulos marcados son los que aparecen en el menú lateral de las cuentas con este rol.{" "}
-                    {rol.modulos === null
-                      ? "Hoy usa la lista que le corresponde por rango; en cuanto cambies algo queda guardada a medida."
-                      : "Este rol ya tiene una lista propia."}
-                  </p>
-                  <div className="rp-chips">
-                    {Object.entries(modulosCatalogo).map(([id, nombre]) => {
-                      const activo = edicion.modulos.has(id);
-                      return (
-                        <button
-                          type="button"
-                          key={id}
-                          className={`rp-chip ${activo ? "rp-chip-on" : ""}`}
-                          disabled={!editable}
-                          onClick={() => marcarModulo(id, !activo)}
-                          title={activo ? "Se ve en el menú: tocá para ocultarlo" : "Oculto en el menú: tocá para mostrarlo"}
-                        >
-                          {activo ? <Check size={13} /> : <X size={13} />} {nombre}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="rp-chips-acciones">
-                    <button className="rp-btn rp-btn-flat" onClick={restaurarModulos} disabled={!editable}>
-                      <RotateCcw size={14} /> Dejar la lista que corresponde al rango
-                    </button>
-                    <span className="rp-meta-dato">{edicion.modulos.size} de {Object.keys(modulosCatalogo).length} módulos visibles</span>
-                  </div>
-                </>
-              )}
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
             </>
           )}
         </section>
@@ -784,19 +867,19 @@ export default function RolesPermisos() {
   );
 }
 
-// Botón de una opción de alcance dentro de la matriz.
-function AlcanceBoton({ valor, etiqueta, activo, disabled, corto, motivo, onClick }) {
+// Botón de una opción de alcance dentro del bloque del módulo.
+function AlcanceBoton({ valor, etiqueta, activo, disabled, motivo, onClick }) {
   const titulos = {
     todos: "Todas las filas del sistema",
     asignados: "Solo los cursos asignados a la cuenta",
-    ninguno: "Nada: el área queda oculta",
+    ninguno: "Nada: el módulo queda oculto",
   };
   return (
     <button
       type="button"
       className={`rp-opcion ${activo ? "rp-opcion-on" : ""}`}
-      disabled={disabled || corto}
-      title={corto ? "Esta área no depende de un curso asignado" : motivo || titulos[valor]}
+      disabled={disabled}
+      title={motivo || titulos[valor]}
       onClick={onClick}
     >
       {etiqueta}
@@ -804,22 +887,24 @@ function AlcanceBoton({ valor, etiqueta, activo, disabled, corto, motivo, onClic
   );
 }
 
-// Tarjeta de un rol en la columna izquierda.
-function RolFicha({ rol, activo, total, areas, onClick }) {
-  const usados = (rol.efectivos ?? rol.permitidos ?? []).length;
-  const quitas = (rol.negados || []).length;
-  const aMedida = rol.modulos !== null || quitas > 0;
+// Tarjeta de un rol en la columna izquierda. `usados` y `total` ya descuentan
+// las casillas que ese rol no puede tener, para que la fracción nunca pase de 1.
+function RolFicha({ rol, activo, usados, total, areas, onClick }) {
   const areasVisibles = Object.values(rol.alcance || {}).filter((a) => a.ver !== "ninguno").length;
   return (
     <button className={`rp-rol ${activo ? "rp-rol-activo" : ""}`} onClick={onClick}>
       <span className="rp-rol-nombre">
         {rolLabel(rol.rol)}
-        {aMedida && <i className="rp-punto" title="Tiene permisos quitados o configuración a medida" />}
       </span>
       <span className="rp-rol-meta">
         <span className="rp-rol-nivel">rango {rol.nivel}</span>
         <span className="rp-rol-usuarios"><Users size={11} /> {rol.usuarios}</span>
         <span className="rp-rol-permisos">{usados}/{total}</span>
+        {rol.tipo === "sistema" && rol.a_medida && (
+          <span className="rp-rol-medida" title="Su lista de permisos no es exactamente la de su rango: alguien la ajustó acá">
+            a medida
+          </span>
+        )}
         {areas > 0 && (
           <span className="rp-rol-alcance" title="Áreas de datos que puede ver">
             <Layers size={11} /> {areasVisibles}/{areas}

@@ -41,6 +41,9 @@
 }
 
 .pl-top-fecha { min-width: 165px; }
+/* Datos de la clase en modo lectura: se leen, no se editan. */
+.pl-input:disabled,
+.pl-textarea:disabled { background-color: var(--gray-100); color: var(--gray-600); cursor: not-allowed; }
 
 .pl-info {
   display: flex;
@@ -50,6 +53,89 @@
   border-radius: var(--radius-lg);
   background-color: var(--blue-50);
   color: var(--blue-800);
+  font-size: var(--text-sm);
+}
+
+/* Confirmación de guardado: verde y más presente que el aviso azul. */
+.pl-info-ok {
+  background-color: var(--emerald-50);
+  color: var(--emerald-800);
+  font-weight: 600;
+  border: 1px solid var(--emerald-200);
+}
+
+/* ---------- Estado de la clase (¿ya está tomada?) ---------- */
+.pl-estado {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--gray-200);
+  background-color: var(--gray-50);
+  color: var(--gray-700);
+  font-size: var(--text-sm);
+}
+
+.pl-estado b { font-weight: 700; }
+
+.pl-estado-det { color: var(--gray-500); }
+
+.pl-estado-tomada {
+  border-color: var(--emerald-200);
+  background-color: var(--emerald-50);
+  color: var(--emerald-800);
+}
+
+.pl-estado-tomada .pl-estado-det { color: var(--emerald-700); }
+
+/* Guardado, pero con la planilla tocada: neutro, no alerta. */
+.pl-estado-cambios {
+  border-color: var(--blue-200);
+  background-color: var(--blue-50);
+  color: var(--blue-800);
+}
+
+.pl-estado-cambios .pl-estado-det { color: var(--blue-800); font-weight: 600; }
+
+/* Botón para volver a tocar una lista que ya quedó guardada. */
+.pl-btn-editar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  padding: 6px 14px;
+  min-height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--blue-500);
+  background-color: #fff;
+  color: var(--blue-700);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pl-btn-editar:hover { background-color: var(--blue-50); }
+
+/* ---------- Lista guardada: se ve, no se toca ---------- */
+/* Se opaca cada fila (no el contenedor) para que el buscador siga nítido. */
+.pl-lista-bloqueada .pl-fila { opacity: 0.55; }
+
+.pl-lista-bloqueada .pl-fila-activa { box-shadow: none; }
+
+.pl-bloqueo-nota {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 7px 11px;
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--gray-200);
+  background-color: var(--gray-50);
+  color: var(--gray-600);
   font-size: var(--text-sm);
 }
 
@@ -95,7 +181,7 @@
   transition: width 0.2s ease-out;
 }
 
-.pl-avance-ok .pl-progreso-fill { background-color: var(--emerald-500); background-image: none; }
+.pl-avance-ok .pl-progreso-fill { background-color: var(--emerald-600); background-image: none; }
 
 .pl-btn-todos {
   display: inline-flex;
@@ -106,7 +192,7 @@
   font-weight: 700;
   padding: 7px 13px;
   border-radius: 999px;
-  border: 1px solid var(--emerald-300);
+  border: 1px solid var(--emerald-200);
   background-color: #fff;
   color: var(--emerald-800);
   cursor: pointer;
@@ -226,6 +312,13 @@
 }
 
 .pl-btn:active { transform: scale(0.96); }
+
+/* Modo lectura: la lista muestra las marcas cargadas pero no se pueden tocar.
+   El botón activo conserva su color para que el estado siga siendo legible. */
+.pl-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+.pl-btn:disabled:active { transform: none; }
+.pl-btn:not(.pl-btn-activo):disabled:hover { background-color: #fff; border-color: var(--gray-200); color: var(--gray-600); }
+.pl-btn-activo:disabled { opacity: 1; }
 
 .pl-btn-presente:hover { border-color: #86efac; background-color: #f0fdf4; color: var(--green-700); }
 .pl-btn-ausente:hover { border-color: #fca5a5; background-color: #fef2f2; color: var(--red-700); }
@@ -366,6 +459,27 @@
 
 .pl-btn-sec:hover { background-color: var(--gray-50); }
 
+/* Salir de la edición sin guardar. Mismo peso visual que «Descartar cambios»:
+   es neutro, no una alerta. */
+.pl-btn-cancelar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--gray-300);
+  background-color: #fff;
+  color: var(--gray-700);
+  cursor: pointer;
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.pl-btn-cancelar:hover { background-color: var(--gray-100); }
+
 .pl-resumen-linea {
   display: flex;
   align-items: center;
@@ -376,6 +490,52 @@
 }
 
 .pl-emptystate-action { display: flex; justify-content: center; width: 100%; }
+
+/* ---------- Atajos de teclado ---------- */
+.pl-atajos {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  padding: 5px var(--sp-3);
+  border-radius: var(--radius-lg);
+  background-color: var(--gray-100);
+  color: var(--gray-600);
+  font-size: var(--text-xs);
+}
+
+.pl-atajos b {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  margin-right: 3px;
+  border-radius: 4px;
+  background-color: #fff;
+  border: 1px solid var(--gray-200);
+  color: var(--gray-800);
+  font-size: 10px;
+}
+
+.pl-atajos-nota { color: var(--gray-500); font-style: italic; }
+
+/* Fila activa: la que responde a P/A/T/J. */
+.pl-fila-activa { box-shadow: 0 0 0 2px var(--blue-500); }
+
+/* ---------- Criterio del porcentaje, al pie ---------- */
+.pl-criterio {
+  flex: 1 1 100%;
+  margin-top: 4px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--gray-200);
+  color: var(--gray-500);
+  line-height: 1.35;
+}
+
+@media (max-width: 700px) {
+  .pl-atajos-nota { display: none; }
+}
 
 /* ---------- Cuando la fila no entra en una linea ---------- */
 @media (max-width: 700px) {

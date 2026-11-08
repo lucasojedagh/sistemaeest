@@ -52,7 +52,10 @@ class AuthToken
             });
 
             if (!$user || $user->status !== 'active') {
-                return response()->json(['message' => 'Unauthorized'], 401);
+                // La app redirige a /login con el 401, pero el texto igual puede
+                // verse (un fetch que muestra el error, un iframe abierto a
+                // media sesión): que sea legible y en español.
+                return response()->json(['message' => 'La sesión venció. Volvé a ingresar.'], 401);
             }
         } else {
             // Ticket de impresión (ver AuthApiController@printTicket): vale 60s
@@ -63,14 +66,16 @@ class AuthToken
             // El api_token real solo viaja en header Authorization.
             $ticket = trim((string) $request->query('ticket', ''));
             if ($ticket === '' || !$this->esRutaImprimible($request)) {
-                return response()->json(['message' => 'Unauthorized'], 401);
+                // Este 401 se ve en la pantalla: es el iframe de la planilla
+                // cuando el enlace se abrió sin ticket o venció.
+                return response()->json(['message' => 'El enlace de impresión venció. Volvé a abrirlo desde la pantalla.'], 401);
             }
             $userId = Cache::get('print_ticket_' . $ticket);
             $user = $userId
                 ? User::where('id', $userId)->where('status', 'active')->first()
                 : null;
             if (!$user) {
-                return response()->json(['message' => 'Unauthorized'], 401);
+                return response()->json(['message' => 'El enlace de impresión venció. Volvé a abrirlo desde la pantalla.'], 401);
             }
         }
 

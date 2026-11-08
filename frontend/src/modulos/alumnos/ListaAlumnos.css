@@ -161,6 +161,11 @@
   box-shadow: 0 0 0 2px rgba(110, 231, 183, 0.7);
 }
 
+/* Inactivo (abandono): el mismo marcasito, en gris. */
+.lista-alumnos-avatar-wrap-inactivo {
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.7);
+}
+
 .lista-alumnos-avatar-inner {
   padding: var(--sp-3);
   border-radius: var(--radius-lg);
@@ -210,8 +215,15 @@
   width: 12px;
   height: 12px;
   border-radius: var(--radius-full);
-  background-color: var(--emerald-400);
   box-shadow: 0 0 0 2px #ffffff;
+}
+
+.lista-alumnos-avatar-dot-egresado {
+  background-color: var(--emerald-400);
+}
+
+.lista-alumnos-avatar-dot-inactivo {
+  background-color: var(--slate-500);
 }
 
 /* ---------- Info del alumno ---------- */
@@ -316,7 +328,7 @@
   transform: scale(0.98);
 }
 
-.lista-alumnos-curso-trigger-egresado {
+.lista-alumnos-curso-trigger-baja {
   background-color: rgba(248, 250, 252, 0.8);
   border-color: var(--slate-100);
 }
@@ -334,7 +346,7 @@
   line-height: 1;
 }
 
-.lista-alumnos-curso-chip-egresado {
+.lista-alumnos-curso-chip-baja {
   background-color: var(--slate-100);
   color: var(--slate-700);
 }
@@ -352,7 +364,7 @@
   font-size: 11px;
 }
 
-.lista-alumnos-curso-value-egresado {
+.lista-alumnos-curso-value-baja {
   border-color: var(--slate-200);
   color: var(--slate-700);
 }
@@ -488,6 +500,13 @@
   border-color: var(--emerald-200);
 }
 
+/* Inactivo (abandonó): rótulo gris, sin color de alerta. */
+.lista-alumnos-chip-inactivo {
+  background-color: var(--slate-100);
+  color: var(--slate-600);
+  border-color: var(--slate-200);
+}
+
 .lista-alumnos-chip-ppi {
   background-color: #fdf4ff;
   color: #a21caf;
@@ -551,7 +570,7 @@
   box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(110, 231, 183, 0.8);
 }
 
-.lista-alumnos-btn-horario-egresado {
+.lista-alumnos-btn-horario-baja {
   color: #94a3b8;
   cursor: not-allowed;
 }

@@ -33,6 +33,17 @@ class PasswordResetController extends Controller
                     'message' => 'Ya te enviamos un enlace hace poco. Esperá un minuto y pedilo de nuevo.',
                 ], 429);
             }
+
+            // Queda en el historial como constancia de que alguien pidió recuperar
+            // el acceso: es un movimiento de cuenta, aunque no haya sesión abierta.
+            \App\Support\ActivityLogger::log(
+                $request,
+                'Pidió un enlace para recuperar su clave',
+                'user.password_link',
+                null, null, null, null,
+                User::where('email', $request->input('email'))->first()
+            );
+
             // Siempre 200 con mensaje genérico
             return response()->json([
                 'ok'      => true,
@@ -65,9 +76,11 @@ class PasswordResetController extends Controller
         ]);
 
         try {
+            $cuenta = null;
             $status = Password::reset(
                 $request->only('email','password','password_confirmation','token'),
-                function ($user, $password) {
+                function ($user, $password) use (&$cuenta) {
+                    $cuenta = $user;
                     $user->forceFill([
                         'password'       => Hash::make($password),
                         'remember_token' => Str::random(60),
@@ -87,6 +100,14 @@ class PasswordResetController extends Controller
             );
 
             if ($status === Password::PASSWORD_RESET) {
+                \App\Support\ActivityLogger::log(
+                    $request,
+                    'Restableció su clave desde el enlace del correo',
+                    'user.password_reset',
+                    'User', $cuenta?->id, null, null,
+                    $cuenta
+                );
+
                 return response()->json(['ok' => true, 'message' => 'Contraseña actualizada correctamente.'], 200);
             }
 

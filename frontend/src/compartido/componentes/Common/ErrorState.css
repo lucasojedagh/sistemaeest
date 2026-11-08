@@ -1,0 +1,47 @@
+/* ErrorState: la pantalla no pudo leer sus datos */
+.errorstate {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--red-200);
+  background-color: var(--red-50);
+  color: var(--red-700);
+  font-size: var(--text-sm);
+}
+
+.errorstate-default {
+  padding: var(--sp-6) var(--sp-8);
+  justify-content: center;
+  text-align: center;
+}
+
+.errorstate-compact {
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+.errorstate-icon {
+  flex-shrink: 0;
+}
+
+.errorstate-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.errorstate-btn {
+  padding: var(--sp-1-5) var(--sp-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--red-300);
+  background-color: #ffffff;
+  color: var(--red-700);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.errorstate-btn:hover {
+  background-color: var(--red-100);
+}

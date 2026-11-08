@@ -30,7 +30,7 @@ export default function TareasFrecuentes({ userRole }) {
       {
         id: "pasar-lista",
         titulo: "Pasar lista",
-        subtitulo: cursoTxt ? `Tomar asistencia de ${cursoTxt}` : "Tomar asistencia de mi curso",
+        subtitulo: cursoTxt ? `Pasar la lista de ${cursoTxt}` : "Pasar la lista de mi curso",
         icon: CalendarCheck,
         color: "tf-green",
         roles: ["admin", "directivo", "jefe_preceptores", "preceptor", "prosecretaria"],

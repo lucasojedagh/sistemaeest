@@ -3,9 +3,11 @@ const SCHEMA_VERSION = 4; // Incrementar si cambia la forma de los datos cachead
 const memoryCache = new Map(); // key -> { data }
 const MAX_JSON_BYTES = 120_000; // ~120KB: listas grandes solo en memoria, evita lag de stringify/parse + localStorage
 
-export function setCacheVersion(v) {
-  try { localStorage.setItem(PREFIX + '_schemaVersion', String(v)); } catch { /* storage no disponible */ }
-}
+// La copia de localStorage sólo sirve durante una jornada. Sin este tope, el
+// dato de ayer se leía como si fuera el de hoy: si la API no respondía, la
+// pantalla mostraba un padrón viejo sin decir nada. En memoria no aplica: la
+// pestaña abierta se revalida sola al recuperar el foco.
+const MAX_ANTIGUEDAD_MS = 12 * 60 * 60 * 1000;
 
 /* Invalida todo el cache si la versión de esquema cambió */
 function ensureSchemaVersion() {
@@ -30,6 +32,10 @@ export function getCached(key) {
     const raw = localStorage.getItem(PREFIX + key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed._ts !== 'number' || Date.now() - parsed._ts > MAX_ANTIGUEDAD_MS) {
+      localStorage.removeItem(PREFIX + key);
+      return null;
+    }
     memoryCache.set(key, { data: parsed._data });
     return parsed._data;
   } catch { return null; }

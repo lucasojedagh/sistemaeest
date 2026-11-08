@@ -61,8 +61,13 @@ class AlumnoCalificacion extends Model
         if ($this->relationLoaded('materia') && $this->materia && $this->materia->exists) {
             return $this->materia->nombre;
         }
-        // fallback “legacy” si existe columna de texto 'materia'
-        return $this->attributes['materia'] ?? null;
+        // Las consultas de la ficha traen el nombre por JOIN ("materias.nombre
+        // as materia_nombre") en vez de cargar la relación. El accessor le gana
+        // al atributo crudo, así que tiene que mirar ese alias primero o el
+        // nombre sale null aunque la consulta lo haya traído.
+        return $this->attributes['materia_nombre']
+            ?? $this->attributes['materia']
+            ?? null;
     }
 
     /** Accesor: devuelve el curso en formato ordinal (ej. "4to B") */

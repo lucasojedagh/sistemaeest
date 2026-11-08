@@ -2,7 +2,7 @@
 // Pagina de gestion de cursos con tarjetas por año, horarios, materias,
 // edicion de divisiones y busqueda de profesores.
 // ===============================
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,8 +19,11 @@ import useAvisoDeCambios from "../../compartido/hooks/useAvisoDeCambios";
 import { apiGet, apiPut } from "../../compartido/lib/api";
 import { cargarDivisiones } from "../../compartido/lib/divisiones";
 import Breadcrumbs from "../../compartido/componentes/Common/Breadcrumbs";
+import ErrorState from "../../compartido/componentes/Common/ErrorState";
+import { mensajeAmable } from "../../compartido/lib/errores";
 import { cursoLabel } from "../../compartido/lib/cursos";
 import { esGestion } from "../auth/roles";
+import { accionEnCurso, accionHabilitada } from "../../compartido/lib/permisos";
 import useAviso from "../../compartido/componentes/modals/useAviso";
 import useConfirmAction from "../../compartido/hooks/useConfirmAction";
 import usePasswordPrompt from "../../compartido/componentes/modals/usePasswordPrompt";
@@ -52,6 +55,9 @@ const Cursos = () => {
   const [ambitoListo, setAmbitoListo] = useState(() => !!getCached('ambito'));
 
   const [loading, setLoading] = useState(true);
+  // Aviso cuando el backend no devolvió los cursos: la grilla muestra los
+  // divisiones por defecto, así que sin este cartel parece que todo está leído.
+  const [errorCarga, setErrorCarga] = useState(null);
   // Mapa de divisiones disponibles por año (editable via modal)
   const [divisionesPorAnio, setDivisionesPorAnio] = useState(DEFAULT_DIVISIONES);
   const getDivisiones = (anioId) => divisionesPorAnio[anioId] || ["1", "2", "3", "4", "5", "6", "7"];
@@ -95,24 +101,29 @@ const Cursos = () => {
 
 
   // Carga inicial: divisiones del backend y ambito del usuario logueado
-  // Carga inicial: divisiones del backend y ambito del usuario logueado
-  useEffect(() => {
-    (async () => {
-      try {
-        const [normalizado, ambitoData] = await Promise.all([
-          cargarDivisiones(),
-          apiAmbito().catch(() => ({ asignaciones: [] })),
-        ]);
-        setDivisionesPorAnio((prev) => ({ ...prev, ...normalizado }));
-        setAmbito(ambitoData);
-        setAmbitoListo(true);
-        if (ambitoData?.role) setCache('ambito', ambitoData);
-      } catch {
-        setAmbitoListo(true);
-      }
-      setLoading(false);
-    })();
+  const cargarInicial = useCallback(async () => {
+    try {
+      const [normalizado, ambitoData] = await Promise.all([
+        cargarDivisiones(),
+        apiAmbito().catch(() => ({ asignaciones: [] })),
+      ]);
+      setDivisionesPorAnio((prev) => ({ ...prev, ...normalizado }));
+      setAmbito(ambitoData);
+      setAmbitoListo(true);
+      if (ambitoData?.role) setCache('ambito', ambitoData);
+      setErrorCarga(null);
+    } catch (e) {
+      // Sin divisiones la grilla queda vacía: el aviso dice que el pedido falló,
+      // no que la escuela no tiene cursos.
+      setErrorCarga(mensajeAmable(e, 'No se pudieron cargar los cursos.'));
+      setAmbitoListo(true);
+    }
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    cargarInicial();
+  }, [cargarInicial]);
 
   // Si en otra pantalla o equipo se tocaron cursos, divisiones o materias, al
   // volver la pantalla se recarga sola (el botón queda para cuando se edita).
@@ -146,15 +157,36 @@ const Cursos = () => {
   };
   useAvisoDeCambios("cursos", ["cursos", "alumnos"], actualizarTodo);
 
-  // Determina si el usuario puede editar un curso específico
-  const puedeEditarCurso = (anio, division) => {
-    if (!user) return false;
-    if (esGestion(user.role)) return true;
-    if (user.role === 'preceptor' && ambito?.asignaciones?.length) {
-      return ambito.asignaciones.some(a => a.anio === anio && (a.division || '').toUpperCase() === (division || '').toUpperCase());
-    }
-    return false;
-  };
+  // Determina si el usuario puede editar un curso específico.
+  // La casilla del catálogo ("Editar horarios de curso") decide la acción y manda
+  // sola cuando el rol tiene lista guardada; el alcance de escritura decide sobre
+  // qué cursos.
+  const puedeEditarHorario = (anio, division) => accionEnCurso(
+    user,
+    'horario.editar',
+    esGestion(user?.role) || isPreceptor,
+    'cursos',
+    anio,
+    division,
+    ambito?.asignaciones,
+  );
+  // Botones del encabezado: uno por casilla, para que desmarcar apague solo eso.
+  const accionesDeGestion = !isPreceptor && !isProfesor;
+  const puedeEditarDivisiones = !!user && accionHabilitada(user, 'cursos.editar', accionesDeGestion);
+  const puedeEditarMaterias = !!user && accionHabilitada(user, 'materias.editar', accionesDeGestion);
+  // "Cambio de ciclo" promociona alumnos: la pantalla toca las dos casillas
+  // (la del módulo y la de la acción sobre los alumnos), así que basta desmarcar
+  // cualquiera de las dos para que el botón desaparezca.
+  const puedePromoverCiclo = !!user
+    && accionHabilitada(user, 'ciclo.promocionar', accionesDeGestion)
+    && accionHabilitada(user, 'alumnos.promocionar', accionesDeGestion);
+  // Imprimir/Exportar PDF del horario es la casilla única de salida.
+  const puedeImprimirHorario = !!user && accionHabilitada(user, 'impresion.usar', true);
+  // "Buscar profesor" llama a /profesores/en-horarios, que pide Ver profesores.
+  // Ese permiso es de rango 1, así que todos los roles lo tienen por defecto y
+  // el botón se comporta igual que antes; en un rol con lista filtrada es la
+  // casilla la que lo enciende o apaga.
+  const puedeBuscarProfesor = !!user && accionHabilitada(user, 'profesores.ver', true);
 
   // Determina los niveles (años) a mostrar segun el ambito del usuario y las divisiones disponibles
   const nivelesUI = useMemo(() => {
@@ -309,45 +341,52 @@ const Cursos = () => {
       <div className="cursos-header">
         <h1 className="cursos-title">Cursos</h1>
         <div className="cursos-header-actions">
-          {/* Visible para todos los roles: el backend recorta los cursos
-              a los horarios que cada usuario puede ver. */}
-          <motion.button
-            onClick={() => setShowBuscarProf(true)}
-            whileTap={{ scale: 0.97 }}
-            className="cursos-btn-outline"
-          >
-            Buscar profesor
-          </motion.button>
-          {!isPreceptor && !isProfesor && (
-            <>
-              <motion.button
-                onClick={() => setShowEditDiv(true)}
-                whileTap={{ scale: 0.97 }}
-                className="cursos-btn-outline"
-              >
-                Editar divisiones
-              </motion.button>
-              <motion.button
-                onClick={() => abrirModalMateriasGlobal()}
-                whileTap={{ scale: 0.97 }}
-                className="cursos-btn-outline"
-              >
-                Materias
-              </motion.button>
-              <motion.button
-                onClick={() => setShowPromo(true)}
-                whileTap={{ scale: 0.97 }}
-                className="cursos-btn-outline"
-              >
-                Cambio de ciclo
-              </motion.button>
-            </>
+          {/* El backend recorta los cursos a los horarios que cada usuario puede
+              ver; la casilla "Ver profesores" es la que muestra u oculta el botón. */}
+          {puedeBuscarProfesor && (
+            <motion.button
+              onClick={() => setShowBuscarProf(true)}
+              whileTap={{ scale: 0.97 }}
+              className="cursos-btn-outline"
+            >
+              Buscar profesor
+            </motion.button>
+          )}
+          {puedeEditarDivisiones && (
+            <motion.button
+              onClick={() => setShowEditDiv(true)}
+              whileTap={{ scale: 0.97 }}
+              className="cursos-btn-outline"
+            >
+              Editar divisiones
+            </motion.button>
+          )}
+          {puedeEditarMaterias && (
+            <motion.button
+              onClick={() => abrirModalMateriasGlobal()}
+              whileTap={{ scale: 0.97 }}
+              className="cursos-btn-outline"
+            >
+              Materias
+            </motion.button>
+          )}
+          {puedePromoverCiclo && (
+            <motion.button
+              onClick={() => setShowPromo(true)}
+              whileTap={{ scale: 0.97 }}
+              className="cursos-btn-outline"
+            >
+              Cambio de ciclo
+            </motion.button>
           )}
         </div>
       </div>
 
       {/* Lista de cursos agrupada por año */}
       <div className="cursos-list">
+        {errorCarga && (
+          <ErrorState mensaje={errorCarga} onReintentar={cargarInicial} compact />
+        )}
         {nivelesUI.map((nivel) => {
           let divisionesDisponibles = getDivisiones(nivel.id);
           if (isProfesor && ambito?.asignaciones?.length) {
@@ -461,7 +500,8 @@ const Cursos = () => {
           }))
         }
         materiasDisponibles={materiasPorAnio[cursoActual?.anio] || []}
-        canEdit={cursoActual ? puedeEditarCurso(cursoActual.anio, cursoActual.division) : false}
+        canEdit={cursoActual ? puedeEditarHorario(cursoActual.anio, cursoActual.division) : false}
+        puedeImprimir={puedeImprimirHorario}
         highlightTarget={highlightTarget}
         onBackToSearch={
           cameFromSearch

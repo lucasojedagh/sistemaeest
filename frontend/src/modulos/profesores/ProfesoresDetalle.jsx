@@ -6,6 +6,8 @@ import { apiGet } from "../../compartido/lib/api";
 import { cargarDivisiones } from "../../compartido/lib/divisiones";
 import { X, Trash2, Plus } from 'lucide-react';
 import { useAuth } from '../../modulos/auth/AuthContext';
+import { esGestion, esRolAsignable } from '../auth/roles';
+import { accionHabilitada } from '../../compartido/lib/permisos';
 import { apiAdminUpdateUserRole, apiAdminSaveAssignments } from '../../compartido/api/auth';
 import { cursoLabel, parseCurso as parseCursoLib, divisionToDato, buildCursosDisponiblesFromMap } from '../../compartido/lib/cursos';
 import { mensajeAmable } from '../../compartido/lib/errores';
@@ -25,6 +27,10 @@ const ROLES_DISPONIBLES = [
 
 // Roles que NO requieren asignaciones de cursos (controlan todo el sistema).
 const ROLES_SIN_ASIGNACIONES = ['jefe_preceptores', 'prosecretaria', 'directivo', 'admin'];
+
+// El rango de Administrador es unico: la etiqueta queda para mostrarlo si la
+// cuenta ya lo tiene, pero no aparece entre las opciones para dárselo a otro.
+const ROLES_OFRECIBLES = ROLES_DISPONIBLES.filter((r) => esRolAsignable(r.value));
 
 // Componente: ProfesoresDetalle
 // Proposito: Modal de detalle y edicion de un profesor. Permite modificar datos personales,
@@ -161,6 +167,10 @@ const ProfesoresDetalle = ({ profesor, setProfesor, actualizarProfesor, eliminar
   // La ficha de solo lectura se muestra por separado en ProfesorFicha.
   const { user: currentUser } = useAuth();
   const isOpen = Boolean(profesor);
+  // El catálogo manda por separado: la suplencia es su propia casilla y cambiar
+  // el rol de una cuenta pertenece a "Usuarios y roles", no a Profesores.
+  const puedeSuplencias = accionHabilitada(currentUser, 'profesores.suplencias', esGestion(currentUser?.role));
+  const puedeCambiarRol = accionHabilitada(currentUser, 'usuarios.rol', esGestion(currentUser?.role));
   const [mostrarAviso, pedirConfirmacion, avisoModal] = useAviso();
   const [confirmarContrasena, modalPwd] = usePasswordPrompt();
 
@@ -625,14 +635,14 @@ const ProfesoresDetalle = ({ profesor, setProfesor, actualizarProfesor, eliminar
               </div>
               </div>
 
-              {/* Rol (solo en edicion) */}
-              {!soloLectura && (
+              {/* Rol (solo en edicion y con el permiso de cambiar roles) */}
+              {!soloLectura && puedeCambiarRol && (
               <div className="det-card">
                 <h3 className="det-card-title det-card-title--mb2">Rol</h3>
                 <div className="det-rol-row">
                   <SimpleDropdown
                     placeholder="Seleccionar rol"
-                    options={ROLES_DISPONIBLES}
+                    options={ROLES_OFRECIBLES}
                     value={rolSeleccionado}
                     onChange={setRolSeleccionado}
                   />
@@ -747,7 +757,7 @@ const ProfesoresDetalle = ({ profesor, setProfesor, actualizarProfesor, eliminar
               <SuplenciasCard
                 profesorId={profesor.id}
                 asignaciones={local.asignaciones || []}
-                soloLectura={soloLectura}
+                soloLectura={soloLectura || !puedeSuplencias}
                 onCambio={onSuplenciasChange}
               />
               )}
@@ -773,16 +783,22 @@ const ProfesoresDetalle = ({ profesor, setProfesor, actualizarProfesor, eliminar
               </div>
             </div>
 
-            {/* Footer */}
-            {!soloLectura && (
+            {/* El pie se muestra si se puede editar o solo dar de baja: con
+                "Baja definitiva de profesores" marcada pero sin "Crear y editar
+                profesores" el botón desaparecía aunque el permiso estuviera. */}
+            {(!soloLectura || eliminarProfesor) && (
             <div className="det-footer">
               <div>
-                <button onClick={handleEliminar} className="det-btn-danger">Dar de baja</button>
+                {eliminarProfesor && (
+                  <button onClick={handleEliminar} className="det-btn-danger">Dar de baja</button>
+                )}
               </div>
+              {!soloLectura && (
               <div className="det-footer-actions">
                 <button onClick={handleCloseAttempt} className="det-btn-secondary">Cancelar</button>
                 <button onClick={handleGuardar} disabled={guardando} className="det-btn-primary">{guardando ? 'Guardando…' : 'Guardar'}</button>
               </div>
+              )}
             </div>
             )}
           </div>

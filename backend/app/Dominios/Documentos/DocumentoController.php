@@ -41,9 +41,15 @@ class DocumentoController extends Controller
         }
     }
 
-    /** El documento solo es visible para sus roles asignados (null = todos, docs legacy). */
+    /**
+     * El documento es visible para sus roles asignados (null = todos, docs legacy)
+     * y siempre para quien lo subió: la pantalla ya le permite editar y borrar lo
+     * suyo aunque se haya excluido de la lista, así que no puede perder el acceso
+     * a leerlo o descargarlo.
+     */
     private function authorizeDoc(Request $request, Documento $doc): void
     {
+        if ((int) $doc->user_id === (int) $request->user()->id) return;
         if (empty($doc->roles)) return;
         if (!in_array($request->user()->role, $doc->roles, true)) {
             abort(403, 'No tenés permiso para ver este documento.');
@@ -58,10 +64,14 @@ class DocumentoController extends Controller
             $query->where('nombre', 'like', LikeSearch::contains($search));
         }
 
-        // Cada rol solo ve los documentos habilitados para el (null = todos).
+        // Cada rol solo ve los documentos habilitados para el (null = todos), más
+        // los que subió él, que son suyos aunque la lista no lo nombre.
         $role = $request->user()->role;
-        $query->where(function ($q) use ($role) {
-            $q->whereNull('roles')->orWhereJsonContains('roles', $role);
+        $userId = (int) $request->user()->id;
+        $query->where(function ($q) use ($role, $userId) {
+            $q->whereNull('roles')
+              ->orWhereJsonContains('roles', $role)
+              ->orWhere('user_id', $userId);
         });
 
         return response()->json($query->paginate(50));
@@ -75,6 +85,11 @@ class DocumentoController extends Controller
             // Roles que pueden ver el documento; vacio o ausente = visibilidad por defecto.
             'roles' => ['nullable', 'array'],
             'roles.*' => ['string', 'in:' . implode(',', self::ROLES_VALIDOS)],
+        ], [
+            // El :max de la regla son kilobytes; en pantalla eso no se entiende.
+            'archivo.required' => 'Elegí el archivo que querés subir.',
+            'archivo.mimes' => 'Ese tipo de archivo no se puede subir. Se aceptan PDF, Word, Excel, PowerPoint, texto, CSV, imágenes, ZIP y RAR.',
+            'archivo.max' => 'El documento no puede pesar más de 50 MB. Si es un archivo grande, comprímilo o dividilo.',
         ]);
 
         $file = $request->file('archivo');
@@ -107,12 +122,7 @@ class DocumentoController extends Controller
     public function update(Request $request, $id): JsonResponse
     {
         $doc = Documento::findOrFail($id);
-
-        // El creador siempre puede editar su propio documento,
-        // incluso si excluyo su rol de la lista.
-        if ((int) $doc->user_id !== (int) $request->user()->id) {
-            $this->authorizeDoc($request, $doc);
-        }
+        $this->authorizeDoc($request, $doc);
 
         $data = $request->validate([
             // Nombre visible del documento (opcional).
@@ -219,16 +229,13 @@ class DocumentoController extends Controller
 
     public function destroy(Request $request, $id): JsonResponse
     {
-        // Borra fila + archivo físico: exige contraseña reciente.
-        $this->assertPasswordConfirmed($request);
-
         $doc = Documento::findOrFail($id);
+        $this->authorizeDoc($request, $doc);
 
-        // El creador siempre puede eliminar su propio documento,
-        // incluso si se excluyo su rol de la visibilidad.
-        if ((int) $doc->user_id !== (int) $request->user()->id) {
-            $this->authorizeDoc($request, $doc);
-        }
+        // Borra fila + archivo físico: exige contraseña reciente. Se pide después
+        // del permiso para que un rol sin "Eliminar documentos" reciba el no
+        // directamente, sin pasar por el modal de la clave.
+        $this->assertPasswordConfirmed($request);
 
         if (Storage::disk('local')->exists($doc->ruta)) {
             Storage::disk('local')->delete($doc->ruta);

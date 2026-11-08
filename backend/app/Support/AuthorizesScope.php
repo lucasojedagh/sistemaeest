@@ -339,4 +339,16 @@ trait AuthorizesScope
             abort(422, 'Confirmá tu contraseña para realizar esta acción.');
         }
     }
+
+    /**
+     * Exige la casilla "impresión" para las vistas imprimibles. Van por routes/web.php,
+     * que no pasa por EnsurePermiso: sin esto la casilla sólo frenaba al ticket y
+     * con un Bearer se podía bajar la planilla igual.
+     */
+    protected function assertPuedeImprimir(Request $request): void
+    {
+        if (!Permisos::puede($this->rolDe($request), 'impresion.usar')) {
+            abort(403, 'No tenés permiso para imprimir o descargar planillas.');
+        }
+    }
 }

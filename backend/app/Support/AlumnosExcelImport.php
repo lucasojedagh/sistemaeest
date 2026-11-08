@@ -221,6 +221,7 @@ class AlumnosExcelImport
         $contexto = $this->contexto();
         $contexto['tieneColumnaGenero'] = isset($columnas['genero']);
         $dnisDelArchivo = [];
+        $identidadesDelArchivo = [];
         $filas = [];
         $avisos = ['correo_no_mail' => 0, 'matricula_anotacion' => 0, 'fuera_de_lista' => 0];
         // En el registro de la escuela la hoja es un bloque por curso: cada bloque
@@ -271,15 +272,22 @@ class AlumnosExcelImport
 
             $estado = 'rechazada';
             if ($errores === []) {
+                $clave = $this->claveIdentidad($datos['apellido'], $datos['nombre'], $datos['anio'], $datos['division']);
                 if ($datos['dni'] !== null && isset($contexto['dnisExistentes'][$datos['dni']])) {
                     $estado = 'existente';
                 } elseif ($datos['dni'] !== null && isset($dnisDelArchivo[$datos['dni']])) {
                     $errores[] = 'El mismo DNI ya está en la fila ' . $dnisDelArchivo[$datos['dni']]
                         . ' de esta planilla: se carga una sola vez (revisá si es un pase de división).';
                     $estado = 'rechazada';
+                } elseif ($datos['dni'] === null && $clave !== '' && (isset($contexto['sinDniExistentes'][$clave]) || isset($identidadesDelArchivo[$clave]))) {
+                    // Sin DNI no se puede reconocer por documento: se omite igual
+                    // si el mismo nombre ya está en la misma división, para que
+                    // reimportar la planilla del registro no duplique al alumno.
+                    $estado = 'existente';
                 } else {
                     $estado = 'nueva';
                     if ($datos['dni'] !== null) $dnisDelArchivo[$datos['dni']] = $f;
+                    if ($clave !== '') $identidadesDelArchivo[$clave] = $f;
                 }
             }
 
@@ -393,6 +401,17 @@ class AlumnosExcelImport
             if ($normal !== null) $dnis[$normal] = true;
         }
 
+        $sinDni = [];
+        foreach (\DB::table('alumnos')
+            ->where(fn($q) => $q->whereNull('dni')->orWhere('dni', ''))
+            ->get(['apellido', 'nombre', 'anio', 'division']) as $r) {
+            // Filas sin DNI: reimportar la misma planilla las volvería a crear
+            // porque no hay DNI con que reconocerlas. Se guardan por nombre y
+            // curso para poder omitirlas igual.
+            $clave = $this->claveIdentidad((string) $r->apellido, (string) $r->nombre, $r->anio, $r->division);
+            if ($clave !== '') $sinDni[$clave] = true;
+        }
+
         $especialidades = [];
         foreach (Alumno::ESPECIALIDADES as $clave => $label) {
             $especialidades[$this->pareceClave($clave)] = $clave;
@@ -403,6 +422,7 @@ class AlumnosExcelImport
             'maxAnio' => SchoolYear::maxYear(),
             'divisiones' => $mapa,
             'dnisExistentes' => $dnis,
+            'sinDniExistentes' => $sinDni,
             'especialidades' => $especialidades,
         ];
     }
@@ -570,7 +590,7 @@ class AlumnosExcelImport
         }
 
         $estado = $this->estado((string) ($crudos['estado'] ?? ''));
-        if ($estado === false) $errores[] = 'El estado tiene que ser Activo o Egresado.';
+        if ($estado === false) $errores[] = 'El estado tiene que ser Activo, Egresado o Inactivo.';
 
         $nacionalidad = $this->texto((string) ($crudos['nacionalidad'] ?? ''));
         // El registro se escribe en mayúsculas; la pantalla agrupa por valor, así
@@ -811,13 +831,14 @@ class AlumnosExcelImport
         return $mapa[$t] ?? false;
     }
 
-    /** Activo / Egresado; null si viene vacío, false si no es un estado conocido. */
+    /** Activo / Egresado / Inactivo; null si viene vacío, false si no es un estado conocido. */
     private function estado(string $v)
     {
         $t = $this->pareceClave($v);
         if ($t === '') return null;
         if (in_array($t, ['activo', 'en curso', 'cursando', 'regular'], true)) return 'Activo';
         if (in_array($t, ['egresado', 'egresada', 'graduado', 'finalizado'], true)) return 'Egresado';
+        if (in_array($t, ['inactivo', 'inactiva', 'abandono', 'abandonado', 'abandonada', 'retirado', 'retirada', 'baja'], true)) return 'Inactivo';
         return false;
     }
 
@@ -838,6 +859,19 @@ class AlumnosExcelImport
         $t = str_replace(['*', '(', ')', '°', '·'], ' ', $t);
         $t = preg_replace('/[^a-z0-9 ]/u', ' ', $t) ?? '';
         return trim(preg_replace('/\s+/u', ' ', $t) ?? '');
+    }
+
+    /**
+     * Clave de un alumno que no tiene DNI: apellido + nombre + curso. Se usa
+     * sólo para omitirlos al reimportar; los que tienen DNI se reconocen por
+     * documento, que es más firme (hay homónimos en la misma división).
+     */
+    private function claveIdentidad(string $apellido, string $nombre, $anio, $division): string
+    {
+        $a = $this->pareceClave($apellido);
+        $n = $this->pareceClave($nombre);
+        if ($a === '' || $n === '') return '';
+        return $a . '|' . $n . '|' . trim((string) $anio) . '|' . $this->pareceClave((string) $division);
     }
 
     private function sinAcentos(string $v): string

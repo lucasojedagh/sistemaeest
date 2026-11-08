@@ -63,6 +63,12 @@ export const rolLabel = (role) => detalle?.[role]?.nombre ?? ROLE_LABELS[role] ?
 
 export const esRolPersonalizado = (role) => !ROLE_LEVEL[role] && detalle?.[role]?.tipo === "personalizado";
 
+// El rango de Administrador es unico: existe una sola cuenta con ese rango (la
+// que crea el seeder) y no se reparte. Espejo de RoleHierarchy::esAsignable del
+// backend, que rechaza la asignacion aunque la pida el propio admin.
+export const ROL_ADMIN_UNICO = "admin";
+export const esRolAsignable = (role) => role !== ROL_ADMIN_UNICO;
+
 // El actor puede gestionar (editar/eliminar/cambiar rol de) al objetivo.
 // espejo de RoleHierarchy::canManage del backend.
 // Los roles del MISMO nivel se gestionan entre si; hacia arriba nadie puede.
@@ -83,5 +89,6 @@ export const canManageRole = (actorRole, targetRole) => {
   return a >= t;
 };
 
-// Permisos de gestión de cuentas (módulo Usuarios, historial, backups): jefe y prosecretaria igual.
+// Permisos de gestión de cuentas (módulo Usuarios, historial): jefe y prosecretaria igual.
+// Los respaldos de la base NO entran acá: son solo del rol Admin.
 export const esGestion = (role) => roleLevel(role) >= ROLE_LEVEL.jefe_preceptores;

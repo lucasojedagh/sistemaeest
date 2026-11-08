@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import useCierreAnimado from "../../lib/useCierreAnimado";
 import { bloquearScroll } from "../../lib/lockScroll";
+import { iniciales } from "../../lib/iniciales";
 
 // Componente: AccountModal
 // Proposito: Modal de informacion de la cuenta del usuario. Muestra datos personales,
@@ -175,7 +176,7 @@ const AccountModal = ({ open, onClose }) => {
     return bloquearScroll();
   }, [montado]);
 
-  const initials = nombre.split(" ").filter(Boolean).map(p=>p[0]).join("").toUpperCase().slice(0,2);
+  const initials = iniciales(nombre, user?.apellido);
 
   /* Maneja el cierre de sesion con confirmacion, guardando la fecha y redirigiendo al login */
   const handleLogout = async () => {

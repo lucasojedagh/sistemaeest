@@ -6,9 +6,10 @@ export async function apiRolDetalle() {
   return apiGet("/roles/detalle"); // { rol: { nombre, nivel, tipo } }
 }
 
-// Catálogo de permisos + estado de cada rol, para pintar la pestaña.
+// Un bloque por módulo (acciones + área de datos + entradas del menú) + estado
+// de cada rol, para pintar la pestaña.
 export async function apiRolesConfig() {
-  return apiGet("/admin/roles"); // { grupos, roles, plantillas, mi_nivel }
+  return apiGet("/admin/roles"); // { bloques, etiquetas_alcance, roles, plantillas, mi_nivel }
 }
 
 // Crea un rol personalizado. Puede arrancar desde una plantilla.

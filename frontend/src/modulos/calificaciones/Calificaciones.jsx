@@ -8,6 +8,8 @@ import "./Calificaciones.css";
 
 import DropdownFiltroAnios from "../alumnos/DropdownFiltroAnios";
 import Breadcrumbs from "../../compartido/componentes/Common/Breadcrumbs";
+import ErrorState from "../../compartido/componentes/Common/ErrorState";
+import { mensajeAmable } from "../../compartido/lib/errores";
 import DropdownMini from "../../compartido/componentes/Common/Dropdownmini";
 import FormularioCalificaciones from "./FormularioCalificaciones";
 import PlanillaModal from "./PlanillaModal";
@@ -16,6 +18,7 @@ import { getCached, setCache } from "../../compartido/lib/pageCache";
 import useAvisoDeCambios from "../../compartido/hooks/useAvisoDeCambios";
 import { useAuth } from '../auth/AuthContext';
 import { esGestion } from '../auth/roles';
+import { accionEnCurso, accionHabilitada } from '../../compartido/lib/permisos';
 import { apiAmbito } from '../../compartido/api/auth';
 import { apiGet, API_BASE } from '../../compartido/lib/api';
 import { cargarDivisiones } from '../../compartido/lib/divisiones';
@@ -57,7 +60,7 @@ export default function Calificaciones() {
 
   const { user } = useAuth();
   const isProfesor = user?.role === 'profesor';
-  const puedeConfigurarVentana = ['admin', 'jefe_preceptores', 'prosecretaria'].includes(user?.role);
+  const puedeConfigurarVentana = !!user && accionHabilitada(user, 'calificaciones.ventana', esGestion(user.role));
   const [ambito, setAmbito] = useState(() => getCached('ambito') || null);
 
   const [ventana, setVentana] = useState(null);
@@ -82,6 +85,9 @@ export default function Calificaciones() {
   const cachedDivs = () => getCached('divisiones');
   const cachedMats = () => getCached('materias/todas');
   const [loading, setLoading] = useState(() => !(cachedDivs() && cachedMats() && getCached('ambito')));
+  // Aviso de la carga inicial + contador para reintentar desde el aviso.
+  const [errorCarga, setErrorCarga] = useState(null);
+  const [intento, setIntento] = useState(0);
   // Sube cada vez que el refresco automático recarga las notas abiertas.
   const [notasKey, setNotasKey] = useState(0);
   const [divisionesMap, setDivisionesMap] = useState(() => cachedDivs() || {});
@@ -97,16 +103,20 @@ export default function Calificaciones() {
   useEffect(() => {
     let cancel = false;
     (async () => {
+      let falloDatos = null;
       const [mapa, ambitoData, todas] = await Promise.all([
-        cargarDivisiones().catch(() => ({})),
+        cargarDivisiones().catch((e) => { falloDatos = falloDatos || e; return ({}); }),
         apiAmbito().catch(() => ({ asignaciones: [] })),
-        api.get('/materias/todas').catch(() => ({})),
+        api.get('/materias/todas').catch((e) => { falloDatos = falloDatos || e; return ({}); }),
       ]);
       if (cancel) return;
       if (mapa) setDivisionesMap(mapa);
       setAmbito(ambitoData);
       setMateriasByYear(todas);
       setCache('materias/todas', todas || {});
+      // Sin cursos ni materias la grilla queda vacía y parece que la escuela no
+      // tiene nada cargado: el aviso aclara que lo que falló fue el pedido.
+      setErrorCarga(falloDatos ? mensajeAmable(falloDatos, 'No se pudieron cargar los cursos ni las materias.') : null);
       // Solo cacheamos el ambito si trajo datos reales (tiene role); no cachear
       // un fallback vacio producto de un error de red (evita "envenenar" la cache).
       if (ambitoData && ambitoData.role) {
@@ -115,7 +125,8 @@ export default function Calificaciones() {
       if (!cancel) setLoading(false);
     })();
     return () => { cancel = true; };
-  }, []);
+    // `intento` cambia solo con el botón Reintentar del aviso de carga.
+  }, [intento]);
 
   // Si en otra pantalla o equipo se tocaron notas, alumnos o cursos, la lista se
   // actualiza sola; con el formulario de notas abierto espera a que se cierre.
@@ -144,14 +155,17 @@ export default function Calificaciones() {
     }));
   }, [yearsInDivisiones, divisionesMap]);
 
-  const puedeEditarCurso = (anio, division) => {
-    if (!user) return false;
-    if (esGestion(user.role)) return true;
-    if (ambito?.asignaciones?.length) {
-      return ambito.asignaciones.some(a => Number(a.anio) === Number(anio) && (a.division || '').toUpperCase() === (division || '').toUpperCase());
-    }
-    return false;
-  };
+  // Cargar notas es una casilla del catálogo ("Cargar y editar notas"); el alcance
+  // de escritura del área Calificaciones decide sobre qué cursos.
+  const puedeEditarCurso = (anio, division) => accionEnCurso(
+    user,
+    'calificaciones.editar',
+    true,
+    'calificaciones',
+    anio,
+    division,
+    ambito?.asignaciones,
+  );
 
   const subjectsList = useMemo(() => {
     if (!divisionesMap || !materiasByYear) return [];
@@ -319,6 +333,12 @@ export default function Calificaciones() {
 
             {loading && groups.length === 0 ? (
               <div className="calif-loading">Cargando datos...</div>
+            ) : errorCarga && groups.length === 0 ? (
+              <ErrorState
+                mensaje={errorCarga}
+                onReintentar={() => { setErrorCarga(null); setIntento((i) => i + 1); }}
+                compact
+              />
             ) : (
               <div className="calif-table-card">
                 <div className="calif-accordion">

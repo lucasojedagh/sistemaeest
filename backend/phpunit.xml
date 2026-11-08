@@ -18,14 +18,16 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
+        <env name="APP_ENV" value="testing" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
-        <env name="CACHE_DRIVER" value="array"/>
-        <!-- sqlite en memoria: los tests actuales no consultan la BD.
-             (Las migraciones usan SQL solo-MySQL, así que ningún test debe
-             usar RefreshDatabase hasta que eso se porte.) -->
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
+        <env name="CACHE_DRIVER" value="array" force="true"/>
+        <!-- Base MySQL propia: las migraciones usan SQL solo-MySQL (enums,
+             índices) y sqlite no las puede correr. El sufijo _tests es
+             obligatorio: tests/CreatesApplication.php aborta si la base no
+             termina así, para que migrate:fresh nunca caiga sobre la del
+             colegio. force=true le gana al .env aunque esté cargado. -->
+        <env name="DB_CONNECTION" value="mysql" force="true"/>
+        <env name="DB_DATABASE" value="sistema_escuela_tests" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

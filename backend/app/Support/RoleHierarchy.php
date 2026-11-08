@@ -74,6 +74,25 @@ class RoleHierarchy
         self::ADMIN            => 'Admin',
     ];
 
+    /**
+     * Etiqueta de cada rango en la pantalla de Roles y permisos. El número solo
+     * no se lee en el historial: "Rango: 2" no dice nada, "2 · Preceptor" sí.
+     */
+    public const NIVELES = [
+        1 => 'Profesor',
+        2 => 'Preceptor',
+        3 => 'Jefe / Prosecretaría',
+        4 => 'Directivo',
+        5 => 'Administrador',
+    ];
+
+    /** "2 · Preceptor"; devuelve lo recibido si el rango no está en la escala. */
+    public static function nivelLabel($nivel): string
+    {
+        $n = (int) $nivel;
+        return isset(self::NIVELES[$n]) ? "{$n} · " . self::NIVELES[$n] : (string) $nivel;
+    }
+
     /** Todos los roles de sistema como mapa rol => nivel, del de menor rango al de mayor. */
     public static function allSistema(): array
     {
@@ -87,6 +106,24 @@ class RoleHierarchy
     {
         if ($role === null || self::nivelSistema($role) > 0) return false;
         return isset(RolConfig::registry()[$role]);
+    }
+
+    /**
+     * El rango de administrador es unico: lo tiene la cuenta que creó el seeder
+     * y no se reparte ni se le quita. canManage() sólo dice quién puede tocar a
+     * otro admin; esto va un paso más acá y cierra la asignación del rango, que
+     * es la escalada de privilegios que nadie debería poder hacer desde la
+     * pantalla de Usuarios, Profesores o Preceptores.
+     */
+    public static function esAsignable(?string $role): bool
+    {
+        return $role !== self::ADMIN;
+    }
+
+    /** Mensaje único para las tres puertas de asignación de rol. */
+    public static function mensajeRolAdminUnico(): string
+    {
+        return 'El rango de Administrador es único: hay una sola cuenta con ese rango y no se le puede dar a otra persona.';
     }
 
     /** Nombre de sistema, sin mirar la tabla (sirve para crear la fila de un rol de sistema). */

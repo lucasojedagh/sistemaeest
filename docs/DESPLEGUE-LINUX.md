@@ -260,6 +260,23 @@ que no viven en MySQL sino en disco) y el volumen `mysql_data`.
   que permite atender varias peticiones en paralelo. `php artisan serve`, en
   cambio, atiende de a una: con varios preceptores a la vez se forma cola. Por
   eso el server va con Docker, no con `artisan serve`.
+- **Límites de PHP acordes al trabajo** (`docker/backend/uploads.ini`):
+  `memory_limit = 256M`, `max_execution_time = 300` y subidas de 64 MB (el mismo
+  techo que `client_max_body_size` de nginx). La imagen trae 128 MB y 30 s por
+  defecto, y medidos con la base del colegio (1202 alumnos) no alcanzan: el
+  padrón de Excel llega a 76 MB y restaurar un `.sql` del tamaño máximo que
+  acepta la pantalla (50 MB) llega a 176 MB, o sea error fatal con la base a
+  mitad de camino. Los 300 s son los mismos que `request_terminate_timeout` del
+  pool y que `fastcgi_read_timeout` de nginx: sin ese último, nginx devolvía 504
+  al minuto mientras PHP seguía restaurando.
+- **La IP real del usuario llega a Laravel**: nginx la pone en
+  `X-Forwarded-For` (`fastcgi_param HTTP_X_FORWARDED_FOR $remote_addr`) y
+  `TrustProxies` la lee. Como `backend:9000` no se publica al host, el único que
+  puede hablar con PHP es nginx, y nginx **pisa** el header que manda el
+  navegador: la IP no se puede falsificar desde la red del colegio. Sin esto, el
+  historial y "Sesiones" registraban la misma dirección (la del contenedor) para
+  toda la escuela, y el cupo de 60 pedidos por minuto sin sesión se repartía
+  entre todos.
 
 **Por qué NO se corre `php artisan config:cache`** en este armado:
 `./backend` está montado por volumen contra el repo del host, así que el archivo
@@ -435,3 +452,179 @@ a representar al código.
    `.sql.gz` que pasa `gzip -t` y termina en `-- Dump completed`.
 6. Restaurar ese `.sql.gz` en una base auxiliar y contar los alumnos: un respaldo
    que nunca se restauró no es un respaldo.
+
+## 14. Migrar los datos reales de un equipo a otro
+
+Es lo que hay que hacer el día que se pasa la base de la notebook/Laragon al
+server nuevo. Son dos comandos, uno en cada máquina, y lo que mueven es **dos
+cosas distintas que siempre van juntas**:
+
+| Qué | Dónde vive | Si no viaja |
+|---|---|---|
+| La base de datos | MySQL (31 tablas hoy) | se pierden alumnos, notas, horarios, usuarios |
+| Los archivos subidos | `backend/storage/app/documentos` y `.../avatars` | la pantalla de Documentos muestra la lista pero cada descarga da error: la tabla guarda el nombre del archivo, el archivo no está |
+
+Por eso no alcanza con un `.sql`: el script empaqueta los dos. (Si del otro lado
+sólo se puede pegar un `.sql` en un panel, está la opción C más abajo, con el
+aviso de qué hay que copiar aparte.)
+
+### En el equipo de origen (Laragon, desde Git Bash)
+
+```bash
+bash scripts/exportar-migracion.sh
+```
+
+Detecta solo de dónde sacar los datos (MySQL local de Laragon o el contenedor
+`enro-mysql` de este repo); si los dos están disponibles, pregunta con `--local`
+/ `--docker` en vez de adivinar. Deja en `exportaciones-enro/` un único
+`.tar.gz` con:
+
+- `bd.sql.gz` — `mysqldump --single-transaction --routines --triggers` (no
+  bloquea a nadie si alguien está trabajando) y verificado: si no encuentra el
+  `-- Dump completed` del cierre, aborta en vez de entregar un volcado a medias.
+- `archivos.tgz` — los documentos y las fotos subidos.
+- `MANIFIESTO.txt` — versión de MySQL, cantidad de filas **por tabla**, última
+  migración aplicada y el sha256 de cada archivo. Es lo que se compara del otro
+  lado.
+- `COMO-RESTAURAR.txt` — los comandos exactos, con los números de este paquete.
+
+Tarda unos segundos con la base actual (3,4 MB) y el paquete pesa lo que pesan
+los documentos. Imprimir el `sha256` en pantalla: sirve para comprobar que la
+copiasita que se pasa por red no se truncó.
+
+### En el server destino
+
+Con el sistema ya arriba (`bash scripts/iniciar.sh`) y el paquete copiado:
+
+```bash
+tar -xzf /tmp/migracion-ENRO-2026-11-06-0910.tar.gz -C /tmp
+bash scripts/restaurar-migracion.sh /tmp/migracion-ENRO-2026-11-06-0910
+```
+
+Los seis pasos que corre, y por qué:
+
+1. **Destino.** Contenedor `enro-mysql` si está arriba, MySQL local si no; si
+   hay ambigüedad, pide `--docker` o `--local`. Comparar la versión de MySQL de
+   origen y destino: un volcado de 8.4 sobre un 5.7 puede morir a mitad con la
+   base destino ya destruida, así que eso se frena antes de tocar nada (las
+   tablas de este sistema usan `utf8mb4_unicode_ci`, collation que existe en
+   MySQL 5.7+, así que 8.0 → 8.4 y 8.4 → 8.0 están bien).
+2. **sha256 de cada archivo contra el manifiesto.** El clásico del traslado es
+   el `scp` que se corta, el pendrive o el zip de Windows que recompone. Un
+   paquete incompleto no se importa: se pide que se vuelva a copiar.
+3. **Qué hay hoy en el destino.** Si la base destino ya tiene alumnos, avisa
+   cuántos, pide escribir `PISAR` (o `--forzar` para no preguntar) y **deja un
+   respaldo en `backups/antes-de-restaurar-*.sql.gz` antes de borrar nada**.
+4. **Importar.** Recrea la base destino vacía (si una tabla ya no existe en el
+   origen, no tiene que quedar viva por las dudas) y mete el volcado por stdin,
+   con `gunzip` corriendo en el host: la imagen de MySQL no necesita traer
+   gzip. `set -o pipefail` hace que un error de `mysql` a mitad aborte el script
+   en vez de felicitar la importación.
+5. **Archivos.** Destruye `archivos.tgz` en `backend/storage/app/` — que es el
+   mismo `/var/www/storage/app` que ve el contenedor, porque `./backend` va
+   montado — y acomoda dueño/permisos desde adentro del contenedor con el
+   `www-data` de la propia imagen; si quedan del usuario del host, la próxima
+   subida de un documento falla por permiso.
+6. **Verificación doble.** Vuelve a contar todas las tablas y, encima, compara
+   el `CHECKSUM TABLE` de cada una contra el del origen. La cantidad de filas
+   sola alcanza para detectar que faltan datos, pero no un apellido cambiado:
+   con las mismas 1202 filas y una celda modificada, el checksum cambia y el
+   script sale con alerta y código `1`.
+
+```
+=== MIGRACIÓN OK ===
+Base:      sistema_escuela (31 tablas verificadas una por una, todas coincidentes)
+Alumnos:   1202 (en el origen había 1202)
+Contenido: checksum idéntico en 31 de 31 tablas
+```
+
+Después, a mano y sin apuro: entrar al sistema, revisar el padrón de un curso
+grande, un horario y **descargar un documento**; y tirar el paquete del `/tmp`
+del server (`rm -rf /tmp/migracion-ENRO-*`), que tiene nombre, DNI, mail y
+teléfono de cada alumno.
+
+**Las cuentas no se reinician.** Los usuarios y sus contraseñas (el hash) viajan
+dentro de la base, así que al terminar la migración se entra con el mismo
+usuario y la misma clave de siempre en el server nuevo. `ADMIN_PASSWORD` de
+`backend/.env` sólo influye en el `db:seed`, y ese paso se saltea cuando los
+datos vienen de una migración: no hay que correrlo, y no hay que intentar
+"restaurar la clave del admin" porque no se perdió nada.
+
+### Opción C: un solo `.sql`, para pegarlo en un panel
+
+Si del otro lado no hay consola cómoda sino phpMyAdmin, HeidiSQL o Workbench,
+`scripts/generar-sql.sh` deja **un único `.sql` de texto plano** con el esquema y
+todos los datos, listo para pegar:
+
+```bash
+bash scripts/generar-sql.sh --probar
+# -> backups/sistema_escuela_COMPLETO_<fecha>.sql (~2,1 MB, 8550 líneas)
+```
+
+El archivo arranca con `CREATE DATABASE IF NOT EXISTS sistema_escuela` + `USE`,
+y trae un `DROP TABLE IF EXISTS` por tabla: pegado reemplaza las tablas de esa
+base y no toca ninguna otra del server. Sale de acá el
+`--skip-extended-insert --complete-insert` del volcado —un `INSERT` por fila y
+con los nombres de las columnas—, que es lo que permite abrir el archivo y
+revisar un alumno a mano, y lo que hace que un cambio de orden de columnas no
+desfase los valores. El precio es un archivo bastante más grande que el
+`.sql.gz`.
+
+`--probar` corre la prueba que a mano no se hace: carga el `.sql` en una base
+auxiliar `sistema_escuela_prueba_sql` y compara el `CHECKSUM TABLE` de las 31
+tablas contra la real (y la cantidad de alumnos). Si el archivo estuviera
+cortado o trajera una celda distinta, no cuadra, y el script sale con `1`
+avisando que no se use. Sin `--probar` igual se niega a escribir si el volcado
+no tiene el `-- Dump completed` del cierre. La prueba deja una copia completa de
+los datos en `sistema_escuela_prueba_sql`: al terminar, `DROP DATABASE` (el
+mismo script imprime el comando).
+
+**Lo que un `.sql` no puede traer: los documentos.** Son archivos, no filas. Con
+esta opción hay que copiar además, por scp o pendrive,
+`backend/storage/app/documentos` y `.../avatars` al mismo lugar del server, y
+devolverles el dueño:
+
+```bash
+chown -R www-data:www-data backend/storage/app/documentos backend/storage/app/avatars
+```
+
+Por eso, para un server nuevo en serio conviene el paquete `.tar.gz` de arriba:
+una sola operación, con sha256, verificación archivo por archivo y respaldo
+previo de la base destino. El `.sql` a secas deja de alcanzar en cuanto el
+sistema tiene documentos subidos.
+
+El archivo queda en `backups/`, que ya está cubierto por `.gitignore`
+(`backups/*.sql`): tiene nombre, DNI, mail y teléfono de cada alumno, y el repo
+es público.
+
+### Lo que está probado y lo que no
+
+Probado de punta a punta en desarrollo: exportar la base real (1202 alumnos,
+7721 filas, 8 documentos), restaurarla en una base aparte, comparar las 31
+tablas por filas y por checksum (los 31 checksum idénticos), importar el
+respaldo `antes-de-restaurar-*` y ver que vuelve atrás de verdad, y las cuatro
+guardas: paquete truncado, sha256 distinto, versión de MySQL incompatible y
+destino con datos sin confirmar. El `.sql` de la opción C pasó la misma prueba
+de carga: cargado en una base auxiliar, 31/31 checksum coincidentes y los mismos
+1202 alumnos; y a mano se verificó además que los acentos viajan enteros
+(`MUÑOZ` = `4D55 C391 4F5A` idéntico en la base original y en la cargada desde
+el `.sql`).
+
+La rama de Docker de ambos scripts se probó contra un `docker` simulado que
+delegaba en el MySQL real: eso comprueba el armaje de comillas, el `docker cp` y
+la entrada por stdin, pero **no** los permisos de `www-data` dentro del
+contenedor ni el `cache:clear`. Esas tres se verifican en el server, y por eso
+el checklist de entrega (§13, puntos 3 y 6) se hace a mano: entrar desde otro
+equipo de la red y restaurar uno de los `.sql.gz` en una base auxiliar.
+
+### Variantes que vale la pena conocer
+
+- `bash scripts/exportar-migracion.sh --docker` se usa desde un server que ya
+  está en producción para mover los datos a otro server, sin pasar por Laragon.
+- `ENRO_SRC_DB_HOST=... ENRO_SRC_DB_PASS=... bash scripts/exportar-migracion.sh
+  --local` exporta de un MySQL de red cualquiera (por ejemplo el server viejo
+  antes de apagarlo).
+- `bash scripts/restaurar-migracion.sh <paquete> --verificar` no escribe nada:
+  sólo compara el destino contra el manifiesto. Sirve para revisar al día
+  siguiente, o después de una restauración hecha a mano.
+- `--sin-archivos` deja la base y no toca `storage/app`.

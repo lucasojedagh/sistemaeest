@@ -11,6 +11,7 @@ import AccountModal from '../modals/AccountModal';
 import AboutModal from '../modals/AboutModal';
 import ManualModal from '../modals/ManualModal';
 import Avatar from '../Common/Avatar';
+import { iniciales } from '../../lib/iniciales';
 import './Navbar.css';
 
 // Componente: Navbar
@@ -19,14 +20,8 @@ import './Navbar.css';
 //            de informacion. Filtra las opciones de menu segun el rol del usuario.
 // Props: ninguna (usa useAuth y useLocation internamente).
 
-const getInitials = (fullName = 'U') =>
-  fullName
-    .split(' ')
-    .filter(Boolean)
-    .map(p => p[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+// Las dos letras del avatar de la cuenta, con la regla de todo el sistema.
+const getInitials = (nombre = 'Usuario', apellido = '') => iniciales(nombre, apellido) || '?';
 
 // Ruta -> clave del catálogo de módulos ("Roles y permisos" usa estas mismas ids).
 const RUTA_MODULO = {
@@ -143,7 +138,7 @@ const Navbar = () => {
 
   const displayName = user?.name || 'Usuario';
   const displayEmail = user?.email || '—';
-  const initials = getInitials(displayName);
+  const initials = getInitials(user?.name, user?.apellido);
 
   const isActivePath = (p) => {
     if (p === '/dashboard') return location.pathname === '/' || location.pathname.startsWith('/dashboard');
@@ -295,14 +290,16 @@ const Navbar = () => {
           <div className="sidebar-footer-copy">Sistema de Gestión Educativa</div>
           <div className="sidebar-footer-year">ↄ {new Date().getFullYear()} E.E.S.T N°2</div>
           <div className="sidebar-footer-links">
-            <button
-              onClick={() => setManualOpen(true)}
-              className="sidebar-footer-about"
-              title="Manuales del sistema en PDF"
-            >
-              <BookOpen size={12} />
-              Manuales
-            </button>
+            {puede(user, 'manuales.ver') && (
+              <button
+                onClick={() => setManualOpen(true)}
+                className="sidebar-footer-about"
+                title="Manuales del sistema en PDF"
+              >
+                <BookOpen size={12} />
+                Manuales
+              </button>
+            )}
             <button
               onClick={() => setAboutOpen(true)}
               className="sidebar-footer-about"

@@ -1,8 +1,8 @@
 // Capa de permisos del frontend.
 // /me devuelve:
-//  - `permisos`: null para los roles de sistema sin quitar permisos (no se filtra
-//    nada) y la lista blanca de claves para los roles personalizados o los roles
-//    de sistema a los que se les quitó algo.
+//  - `permisos`: null para los roles de sistema que nadie tocó todavía (entran
+//    por su rango) y la lista completa de claves para cualquier rol ya guardado
+//    en "Roles y permisos", sea del sistema o personalizado.
 //  - `alcance`: mapa área -> {ver, editar} con 'todos' | 'asignados' | 'ninguno'.
 //  - `modulos`: null cuando el rol usa la lista de siempre, o los módulos del
 //    lateral que debe ver.
@@ -19,6 +19,21 @@ export function puede(user, clave) {
 
 /** ¿El backend le está filtrando los permisos a este usuario? (rol personalizado o de sistema con quitas) */
 export const estaFiltrado = (user) => Array.isArray(user?.permisos);
+
+/**
+ * ¿Este botón/acción está habilitada para el usuario?
+ * Es la misma regla que aplica el backend en EnsureRole: si el rol tiene su lista
+ * guardada en "Roles y permisos" (rol personalizado, o uno de sistema editado) la
+ * casilla decide sola; si no tiene lista, decide la regla de siempre del rango,
+ * que es el `segunRango` que pasa la pantalla.
+ * Así desmarcar una casilla deja de ser decorativo, y marcarla en un rol
+ * personalizado habilita la acción aunque el rango del rol no la cubra.
+ */
+export function accionHabilitada(user, clave, segunRango = false) {
+  if (!clave) return true;
+  if (estaFiltrado(user)) return puede(user, clave);
+  return !!segunRango;
+}
 
 /** ¿El rol muestra este módulo del menú? Sin configuración, se usa la lista de siempre. */
 export function moduloVisible(user, id) {
@@ -40,6 +55,34 @@ export const veTodo = (user, area) => alcanceVer(user, area) === 'todos';
 
 /** No ve nada del área: la pantalla va vacía u oculta. */
 export const noVe = (user, area) => alcanceVer(user, area) === 'ninguno';
+
+/**
+ * ¿El alcance de escritura del rol alcanza este curso concreto?
+ * 'todos' no recorta; 'asignados' mira la lista que devuelve /me/ambito;
+ * 'ninguno' corta todo. Es el mismo orden del backend: primero la acción,
+ * después el alcance.
+ */
+export function cursoEnAlcance(user, area, anio, division, asignaciones) {
+  const alcance = alcanceEditar(user, area);
+  if (alcance === 'ninguno') return false;
+  if (alcance === 'todos') return true;
+  if (!asignaciones?.length) return false;
+  return asignaciones.some((a) =>
+    Number(a.anio) === Number(anio) &&
+    (a.division || '').toUpperCase() === (division || '').toUpperCase()
+  );
+}
+
+/**
+ * Botón/acción que recae sobre un curso concreto: la casilla del catálogo decide
+ * si existe la acción y el alcance de escritura decide sobre qué cursos.
+ * `segunRango` es la regla de siempre del módulo, para los roles sin lista guardada.
+ */
+export function accionEnCurso(user, clave, segunRango, area, anio, division, asignaciones) {
+  return !!user
+    && accionHabilitada(user, clave, segunRango)
+    && cursoEnAlcance(user, area, anio, division, asignaciones);
+}
 
 /** Ruta del módulo que el rol tiene visible, o null si no hay ninguno. */
 export const primeraRutaVisible = (user, rutasPorModulo) => {

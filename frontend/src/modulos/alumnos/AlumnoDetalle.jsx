@@ -15,6 +15,9 @@ import { useToast } from "../../compartido/componentes/Common/Toast";
 import useAviso from "../../compartido/componentes/modals/useAviso";
 import usePasswordPrompt from "../../compartido/componentes/modals/usePasswordPrompt";
 import { useDeshacerAviso } from "../../compartido/lib/deshacer.jsx";
+import { esGestion } from "../auth/roles";
+import { accionHabilitada } from "../../compartido/lib/permisos";
+import { iniciales } from "../../compartido/lib/iniciales";
 import "./AlumnoDetalle.css";
 
 /*
@@ -127,9 +130,6 @@ const req = <span className="alumno-detalle-req" aria-hidden="true">*</span>;
 const card = 'alumno-detalle-card';
 const cardTitle = 'alumno-detalle-card-title';
 
-const initials = (apellido = '', nombre = '') =>
-  `${(apellido || '').trim()[0] || ''}${(nombre || '').trim()[0] || ''}`.toUpperCase();
-
 const avatarClassesByGenero = (g) => {
   if (g === 'F') return 'alumno-detalle-avatar-f';
   if (g === 'M') return 'alumno-detalle-avatar-m';
@@ -209,7 +209,7 @@ const normalizeResponsables = (alumno) => {
 
 /* ============================ Componente principal ============================ */
 /* Modal de edicion y ficha del alumno. Gestiona toda la informacion personal, academica y de contacto. */
-const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, onOpenCronograma }) => {
+const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, onOpenCronograma, permisosAlumno }) => {
   const [confirmAction, confirmModal] = useConfirmAction();
   const [mostrarAviso, pedirConfirmacion, avisoModal] = useAviso();
   const [confirmarContrasena, modalPwd] = usePasswordPrompt();
@@ -234,8 +234,6 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
   // Auth y roles
   const { user } = useAuth();
   const role = user?.role;
-  const isProfesor  = role === 'profesor';
-  const isPreceptor = role === 'preceptor';
 
   // Inputs “agregar”
   const [materiaAnio, setMateriaAnio] = useState('');
@@ -280,8 +278,23 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
 
   // 🔁 Vista: Editar ficha (false) / Editar cronograma (true)
   const [esCronograma, setEsCronograma] = useState(false);
-  // ⬅️ Bloqueo para PROFESOR y PRECEPTOR: ocultamos el switch y el cronograma
-  const soloLectura = isProfesor;
+  // Las acciones de la ficha salen de las casillas de "Roles y permisos". La
+  // pantalla de Alumnos las resuelve junto con el alcance sobre ESTE alumno y las
+  // pasa en `permisosAlumno`; sin esa guía se evalúa solo la casilla del catálogo.
+  // Sin lista guardada para el rol manda la regla de siempre del rango: editan la
+  // gestión y el preceptor, el profesor solo mira.
+  const accionFicha = (clave, segunRango, fn) =>
+    (fn ? !!fn(alumno) : !!user && accionHabilitada(user, clave, segunRango));
+  const puedeEditarFicha = accionFicha(
+    'alumnos.editar',
+    esGestion(role) || role === 'preceptor',
+    permisosAlumno?.editar
+  );
+  const puedeEgresar = accionFicha('alumnos.egresar', esGestion(role), permisosAlumno?.egresar);
+  const puedeInactivar = accionFicha('alumnos.inactivar', esGestion(role), permisosAlumno?.inactivar);
+  const puedeDarBaja = accionFicha('alumnos.eliminar', esGestion(role), permisosAlumno?.eliminar);
+  // ⬅️ Solo lectura: quien no tiene la edición habilitada ve la ficha pero no guarda.
+  const soloLectura = !puedeEditarFicha;
 
   // Al abrir un alumno volvemos siempre a "Editar ficha" ANTES del primer
   // pintado (patrón de React para ajustar estado cuando cambia una prop).
@@ -718,47 +731,74 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
     }
   };
 
-  /* ===== Toggle Egresado (switch) ===== */
-  /* Cambia el estado entre Activo y Egresado. Solo permite egresar si es el ultimo anio activo. */
-  const handleToggleEgresado = async (checked) => {
-    if (checked) {
-      if (!esUltimoAnio) {
-        await mostrarAviso({
-          icon: 'warning',
-          title: 'No se puede egresar',
-          text: 'Sólo se puede egresar a alumnos en el último año activo.',
-        });
-        return;
-      }
-      try {
-        let data = null;
-        const detalles = await confirmAction('¿Por qué egresás a este alumno?', async (d) => {
-          data = await apiPost(`/alumnos/${alumno.id}/egresar`, { anioLectivo: new Date().getFullYear(), _detalles: d });
-        });
-        if (detalles === null) return;
-        setAlumno(prev => ({
-          ...prev,
-          estado: 'Egresado',
-          egreso_year: (data?.egreso_year ?? new Date().getFullYear()),
-          egreso_anio: (data?.egreso_anio ?? alumnoYearNum),
-          egreso_division: (data?.egreso_division ?? parseCurso(prev?.anio).division) || null,
-        }));
-      } catch (e) {
-        console.error('No se pudo egresar al alumno:', e?.message || 'Error desconocido.');
-      }
-    } else {
-      // Quitar egresado es solo un borrador: recién se aplica al tocar Guardar
-      // (egresar, en cambio, se guarda al instante). Se avisa para no confundir.
-      setAlumno(prev => ({
-        ...prev,
-        estado: 'Activo',
-        egreso_year: null,
-        egreso_anio: null,
-        egreso_division: null,
-      }));
-      showToast('Se marcó como activo. Tocá Guardar para confirmarlo.', 'info');
+  /* ===== Estado: Activo / Egresado / Inactivo ===== */
+  /* Las dos bajas se guardan al instante con su endpoint (dejan constancia en
+     el historial). Volver a Activo queda como borrador hasta tocar Guardar. */
+  const aplicarBaja = (estado, data) => setAlumno(prev => ({
+    ...prev,
+    estado,
+    // El endpoint ya escribió la fila: se guarda la versión que devuelve para
+    // que un Guardar posterior no se crea en conflicto consigo mismo.
+    version: (data?.version ?? prev?.version),
+    egreso_year: (data?.egreso_year ?? new Date().getFullYear()),
+    egreso_anio: (data?.egreso_anio ?? alumnoYearNum),
+    egreso_division: (data?.egreso_division ?? parseCurso(prev?.anio).division) || null,
+  }));
+
+  const marcarActivo = () => {
+    setAlumno(prev => ({
+      ...prev,
+      estado: 'Activo',
+      egreso_year: null,
+      egreso_anio: null,
+      egreso_division: null,
+    }));
+    showToast('Se marcó como activo. Tocá Guardar para confirmarlo.', 'info');
+  };
+
+  const marcarEgresado = async () => {
+    if (!esUltimoAnio) {
+      await mostrarAviso({
+        icon: 'warning',
+        title: 'No se puede egresar',
+        text: 'Sólo se puede egresar a alumnos en el último año activo.',
+      });
+      return;
+    }
+    try {
+      let data = null;
+      const detalles = await confirmAction('¿Por qué egresás a este alumno?', async (d) => {
+        data = await apiPost(`/alumnos/${alumno.id}/egresar`, { anioLectivo: new Date().getFullYear(), _detalles: d });
+      });
+      if (detalles === null) return;
+      aplicarBaja('Egresado', data);
+    } catch (e) {
+      console.error('No se pudo egresar al alumno:', e?.message || 'Error desconocido.');
     }
   };
+
+  const marcarInactivo = async () => {
+    try {
+      let data = null;
+      const detalles = await confirmAction('¿Por qué marcás inactivo a este alumno? (abandonó)', async (d) => {
+        data = await apiPost(`/alumnos/${alumno.id}/inactivar`, { anioLectivo: new Date().getFullYear(), _detalles: d });
+      });
+      if (detalles === null) return;
+      aplicarBaja('Inactivo', data);
+    } catch (e) {
+      console.error('No se pudo inactivar al alumno:', e?.message || 'Error desconocido.');
+    }
+  };
+
+  // Cada tramo del selector de estado trae su permiso y su acción: el tramo
+  // sin permiso se ve deshabilitado, nunca desaparece (la ficha siempre
+  // explica en qué estado está el alumno).
+  const opcionesEstado = [
+    { valor: 'Activo',   habilitado: true,           accion: marcarActivo },
+    { valor: 'Egresado', habilitado: puedeEgresar,   accion: marcarEgresado },
+    { valor: 'Inactivo', habilitado: puedeInactivar, accion: marcarInactivo },
+  ];
+  const puedeCambiarEstado = puedeEgresar || puedeInactivar;
 
   /* Agrega una materia a la lista de recursado o intensificacion segun el tipo */
   const agregarMateria = async (tipo) => {
@@ -964,7 +1004,7 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
               <div className="alumno-detalle-header">
               <div className="alumno-detalle-header-row">
                 <div className={`alumno-detalle-avatar ${avatarClassesByGenero(alumno?.genero)}`}>
-                  {initials(alumno?.apellido, alumno?.nombre)}
+                  {iniciales(alumno?.nombre, alumno?.apellido)}
                 </div>
                 <div>
                   <h2 className="alumno-detalle-title">Editar ficha</h2>
@@ -1123,12 +1163,12 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
                         ))}
                       </div>
 
-                      {/* Estado Activo / Egresado */}
+                      {/* Estado del alumno: Activo / Egresado / Inactivo */}
                       <div className="alumno-detalle-col-span-2">
-                        {soloLectura ? (
+                        {!puedeCambiarEstado ? (
                           <div className="alumno-detalle-estado-row">
                             <span className="alumno-detalle-estado-label">Estado del alumno</span>
-                            <span className={`alumno-detalle-estado-badge ${ (alumno?.estado || '') === 'Egresado' ? 'alumno-detalle-estado-badge-egresado' : 'alumno-detalle-estado-badge-activo'}`}>
+                            <span className={`alumno-detalle-estado-badge alumno-detalle-estado-badge-${(alumno?.estado || 'Activo').toLowerCase()}`}>
                               {alumno?.estado || 'Activo'}
                             </span>
                           </div>
@@ -1136,22 +1176,22 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
                         <div className="alumno-detalle-estado-row alumno-detalle-estado-row-between">
                           <div className="alumno-detalle-estado-text">
                             <div className="alumno-detalle-estado-label">Estado del alumno</div>
-                            <div className="alumno-detalle-estado-hint">Cambiá entre Activo y Egresado</div>
+                            <div className="alumno-detalle-estado-hint">Egresado e Inactivo salen de los cursos y conservan todos sus datos</div>
                           </div>
 
-                          <div className="alumno-detalle-switch-group">
-                            <span className={`alumno-detalle-switch-side ${ (alumno?.estado || '') === 'Egresado' ? 'alumno-detalle-switch-side-muted' : 'alumno-detalle-switch-side-activo'}`}>Activo</span>
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={(alumno?.estado || '') === 'Egresado'}
-                              onClick={() => handleToggleEgresado((alumno?.estado || '') !== 'Egresado')}
-                              className={`alumno-detalle-switch-track ${ (alumno?.estado || '') === 'Egresado' ? 'alumno-detalle-switch-track-on' : 'alumno-detalle-switch-track-off'}`}
-                              title="Cambiar estado"
-                            >
-                              <span className={`alumno-detalle-switch-thumb ${ (alumno?.estado || '') === 'Egresado' ? 'alumno-detalle-switch-thumb-on' : 'alumno-detalle-switch-thumb-off'}`} />
-                            </button>
-                            <span className={`alumno-detalle-switch-side ${ (alumno?.estado || '') === 'Egresado' ? 'alumno-detalle-switch-side-egresado' : 'alumno-detalle-switch-side-muted'}`}>Egresado</span>
+                          <div className="alumno-detalle-estado-grupo" role="group" aria-label="Estado del alumno">
+                            {opcionesEstado.map(({ valor, habilitado, accion }) => (
+                              <button
+                                key={valor}
+                                type="button"
+                                onClick={accion}
+                                disabled={!habilitado || (alumno?.estado || 'Activo') === valor}
+                                title={habilitado ? valor : 'No tenés ese permiso'}
+                                className={`alumno-detalle-estado-boton ${(alumno?.estado || 'Activo') === valor ? `alumno-detalle-estado-boton-${valor.toLowerCase()}` : ''}`}
+                              >
+                                {valor}
+                              </button>
+                            ))}
                           </div>
                         </div>
                         )}
@@ -1541,7 +1581,7 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
             {!esCronograma ? (
               <div className="alumno-detalle-footer">
                 <div>
-                  {!isPreceptor && (
+                  {puedeDarBaja && (
                     <button
                       onClick={async () => {
                         const ok = await pedirConfirmacion({
@@ -1580,11 +1620,14 @@ const AlumnoDetalle = ({ alumno, setAlumno, actualizarAlumno, eliminarAlumno, on
                 </div>
                 <div className="alumno-detalle-footer-actions">
                   <button onClick={handleCloseAttempt} className="alumno-detalle-btn-cancel">
-                    Cancelar
+                    {soloLectura ? 'Cerrar' : 'Cancelar'}
                   </button>
-                  <button onClick={handleGuardar} disabled={guardando} className="alumno-detalle-btn-save">
-                    {guardando ? 'Guardando…' : 'Guardar'}
-                  </button>
+                  {/* Sin la casilla "Editar alumnos" no hay guardado posible. */}
+                  {!soloLectura && (
+                    <button onClick={handleGuardar} disabled={guardando} className="alumno-detalle-btn-save">
+                      {guardando ? 'Guardando…' : 'Guardar'}
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (

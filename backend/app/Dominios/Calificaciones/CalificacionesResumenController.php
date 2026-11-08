@@ -71,13 +71,16 @@ class CalificacionesResumenController extends Controller
         // Consulta agregada (promedios P1/P2 por alumno) directamente en SQL.
         // Solo notas regulares: intensificaciones, preliminares y finales
         // no promedian con los parciales (misma regla que el resto).
+        // La columna de valor es texto: un TEA/TEP/TED se convierte en 0 al
+        // sumarlo y además contaría como una nota cargada, así que el promedio
+        // saldría 0 en vez de vacío. Se excluyen del numerador y del conteo.
         $q = DB::table($table)
             ->selectRaw("
                 {$colAlumno}   as alumno_id,
-                SUM(CASE WHEN {$colPeriodo} = 1 THEN {$colValor} ELSE 0 END)       as s1,
-                SUM(CASE WHEN {$colPeriodo} = 1 THEN 1           ELSE 0 END)       as n1,
-                SUM(CASE WHEN {$colPeriodo} = 2 THEN {$colValor} ELSE 0 END)       as s2,
-                SUM(CASE WHEN {$colPeriodo} = 2 THEN 1           ELSE 0 END)       as n2
+                SUM(CASE WHEN {$colPeriodo} = 1 AND {$colValor} + 0 > 0 THEN {$colValor} + 0 ELSE 0 END)  as s1,
+                SUM(CASE WHEN {$colPeriodo} = 1 AND {$colValor} + 0 > 0 THEN 1             ELSE 0 END)  as n1,
+                SUM(CASE WHEN {$colPeriodo} = 2 AND {$colValor} + 0 > 0 THEN {$colValor} + 0 ELSE 0 END)  as s2,
+                SUM(CASE WHEN {$colPeriodo} = 2 AND {$colValor} + 0 > 0 THEN 1             ELSE 0 END)  as n2
             ")
             ->whereIn($colPeriodo, [1,2]);
         if ($colTipo = $this->cachedHasColumn($table, ['tipo_calificacion', 'tipo'])) {

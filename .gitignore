@@ -13,6 +13,12 @@ backend/public/storage
 
 # Backups generados por los scripts (sí se versiona la carpeta backups/, no su contenido)
 backups/*.sql
+backups/*.sql.gz
+
+# Paquetes de migración que arma scripts/exportar-migracion.sh: traen la base
+# completa con nombres, DNI, mails y teléfonos de los alumnos, más los
+# documentos subidos. Se copian al server y se borran; al repo nunca.
+/exportaciones-enro/
 
 # Sistema
 .DS_Store

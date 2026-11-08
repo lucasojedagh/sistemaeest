@@ -111,9 +111,9 @@ export default function CoursePicker({ maps, value, onChange, disabled = false, 
             <div className="picker-menu-scroll">
               {ningunoEditable && (
                 <div className="picker-nota">
-                  Tu cuenta no tiene ningún curso asignado: podés ver la asistencia de
-                  todos los cursos pero no marcar en ninguno. Pedí a la dirección que te
-                  asigne año y división en Usuarios.
+                  {maps?.puede_marcar === false
+                    ? 'Tu rol no tiene habilitada la carga de asistencia, así que ningún curso está disponible para marcar. Las clases pasadas de tus cursos están en la solapa "Clases".'
+                    : "Tu cuenta no tiene ningún curso asignado: podés ver la asistencia de todos los cursos pero no marcar en ninguno. Pedí a la dirección que te asigne año y división en Usuarios."}
                 </div>
               )}
 
@@ -146,7 +146,9 @@ export default function CoursePicker({ maps, value, onChange, disabled = false, 
                         type="button"
                         onClick={() => select(anio, d)}
                         disabled={!puedeMarcar}
-                        title={puedeMarcar ? undefined : "Tu cuenta no tiene asignado este curso: no podés marcar su asistencia."}
+                        title={puedeMarcar ? undefined : (maps?.puede_marcar === false
+                          ? 'Tu rol no toma asistencia. Las clases de este curso están en la solapa "Clases".'
+                          : "Tu cuenta no tiene asignado este curso: no podés marcar su asistencia.")}
                         className={`picker-option ${
                           sel ? "picker-option-selected" : "picker-option-default"
                         } ${puedeMarcar ? "" : "picker-option-bloqueado"}`}

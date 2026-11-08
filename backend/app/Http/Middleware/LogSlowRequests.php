@@ -20,7 +20,7 @@ class LogSlowRequests
         $response = $next($request);
 
         $ms = (int) round((microtime(true) - $inicio) * 1000);
-        $umbral = (int) (env('SLOW_REQUEST_MS', 2000) ?: 2000);
+        $umbral = (int) config('enro.slow_request_ms', 2000);
 
         if ($ms >= $umbral) {
             Log::warning('Pedido lento', [

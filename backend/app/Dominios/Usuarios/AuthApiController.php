@@ -206,6 +206,15 @@ class AuthApiController extends Controller
                 ->update(['api_token' => null]);
         }
 
+        ActivityLogger::log(
+            $r,
+            $cerrarTodas
+                ? 'Cerró todas sus sesiones desde ' . ($u->name ?: $u->email)
+                : 'Cerró ' . $cerradas->count() . ' sesiones abiertas en otros equipos',
+            'user.sesiones',
+            'User', $u->id
+        );
+
         return ['ok' => true, 'cerradas' => $cerradas->count()];
     }
 
@@ -226,8 +235,9 @@ class AuthApiController extends Controller
             'role'          => $u->role,
             'rol_nombre'    => \App\Support\RoleHierarchy::nombre($u->role),
             'nivel'         => \App\Support\RoleHierarchy::level($u->role),
-            // null: rol de sistema sin quitarle permisos (el front no filtra nada).
-            // Array de claves: lista blanca de lo que puede hacer este rol.
+            // null: rol de sistema que nadie tocó todavía (el front no filtra nada,
+            // entra por su rango). Array de claves: lista completa del rol, guardada
+            // en "Roles y permisos", sea de sistema o personalizado.
             'permisos'      => \App\Support\Permisos::efectivos($u->role),
             // Alcance efectivo por área (ver/editar: todos | asignados | ninguno).
             'alcance'       => \App\Support\Alcances::de($u->role),
@@ -355,13 +365,27 @@ class AuthApiController extends Controller
             'name'     => ['required','string','max:255'],
             'email'    => ['required','email','max:255','unique:users,email,'.$u->id, new \App\Support\Rules\EmailInstitucional],
             'password' => ['nullable', Password::min(8)],
+            'password_actual' => ['nullable','string'],
         ]);
+
+        $antes = ['Nombre' => $u->name, 'Correo' => $u->email];
 
         $u->name  = $data['name'];
         $u->email = $data['email'];
 
         $cambioPassword = !empty($data['password']);
+        // Nadie cambia una clave sin probar la que tiene: si alguien deja una
+        // sesión abierta, desde ahí se podía reemplazar la contraseña y tomar la
+        // cuenta sin saber nada. Es el mismo candado de limpiar el historial.
         if ($cambioPassword) {
+            $actual = (string) ($data['password_actual'] ?? '');
+            if ($actual === '' || !Hash::check($actual, $u->password)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'password_actual' => [$actual === ''
+                        ? 'Necesitamos tu contraseña actual para poder cambiarla.'
+                        : 'La contraseña actual no es correcta.'],
+                ]);
+            }
             $u->password = Hash::make($data['password']);
             // Ya tiene una clave propia: no hay nada pendiente que bloquear.
             $u->debe_cambiar_password = false;
@@ -369,11 +393,19 @@ class AuthApiController extends Controller
 
         $u->save(); // aquí sí queremos que updated_at cambie
 
+        // El middleware de sesión deja una copia del usuario en caché 5 minutos.
+        // Sin descartar la de este token, el /me que sigue (y el historial del
+        // próximo guardado) seguirían leyendo el nombre y el correo viejos, y un
+        // segundo cambio en ese rato no vería diferencia con lo "actual".
+        $tokenActual = (string) $r->bearerToken();
+        if ($tokenActual !== '') {
+            Cache::forget('auth_token_' . $tokenActual);
+        }
+
         // La clave nueva cierra las sesiones de los DEMÁS equipos: si la vieja
         // se filtró, quien la tenga ya no entra. La sesión con la que se hizo el
         // cambio queda abierta para no expulsar al usuario a media edición.
         if ($cambioPassword) {
-            $tokenActual = (string) $r->bearerToken();
             $otras = ApiSesion::where('user_id', $u->id)
                 ->when($tokenActual !== '', fn ($q) => $q->where('token', '!=', $tokenActual))
                 ->get();
@@ -389,6 +421,17 @@ class AuthApiController extends Controller
                 User::where('id', $u->id)->update(['api_token' => null]);
             }
         }
+
+        ActivityLogger::log(
+            $r,
+            'Actualizó los datos de su cuenta',
+            'user.profile',
+            'User', $u->id,
+            ['Nombre' => $antes['Nombre'], 'Correo' => $antes['Correo'], 'Clave' => 'igual'],
+            // La clave nunca se guarda en el historial: se deja constancia de que
+            // se cambió, que es lo que alguien puede necesitar revisar.
+            ['Nombre' => $u->name, 'Correo' => $u->email, 'Clave' => $cambioPassword ? 'cambiada' : 'igual']
+        );
 
         return [
             'id'            => $u->id,
@@ -410,13 +453,14 @@ class AuthApiController extends Controller
     public function logout(Request $r)
     {
         $u = $r->user();
+        $todas = $r->boolean('todos') || $r->boolean('all');
         if ($u) {
             $token = $r->bearerToken();
             if ($token) {
                 \Illuminate\Support\Facades\Cache::forget('auth_token_' . $token);
                 // Cierra SOLO este equipo. Con ?todos=1 cierra todos los
                 // equipos: es el "salir de todos lados".
-                if ($r->boolean('todos') || $r->boolean('all')) {
+                if ($todas) {
                     ApiSesion::cerrarTodas($u->id);
                     User::where('id', $u->id)->update(['api_token' => null]);
                 } else {
@@ -427,40 +471,45 @@ class AuthApiController extends Controller
                 }
             }
             // Evitamos tocar updated_at al cerrar sesión
+            // El cierre queda anotado igual que el inicio: sin esto, el historial
+            // mostraba entradas pero nunca salidas.
+            ActivityLogger::log($r, $todas ? 'Cerró todas sus sesiones' : 'Cerró su sesión', 'user.logout', 'User', $u->id);
         }
 
         return ['ok' => true];
     }
 
-    // Verifica la contrasena del usuario autenticado (los roles con nivel de
-    // jefe de preceptores o superior: admin, directivo, jefe y prosecretaria).
-    // Devuelve un TTL de 5 minutos para que el frontend pueda realizar operaciones sensibles.
+    // Verifica la propia contraseña de la cuenta autenticada, sea cual sea su rol.
+    // Confirmar la clave no habilita nada por sí solo: cada acción destructiva
+    // sigue chequeando su permiso y su alcance. Si esto se cierra por rango, un
+    // preceptor no puede deshacer su propia clase ni borrar un documento propio,
+    // porque esas acciones le piden la clave antes de entrar.
     public function confirmPassword(Request $r)
-{
-    $u = $r->user();
-        if (!$u || !\App\Support\RoleHierarchy::isAtLeast($u->role, \App\Support\RoleHierarchy::JEFE_PRECEPTORES)) {
-            return response()->json(['message' => 'Forbidden'], 403);
+    {
+        $u = $r->user();
+        if (!$u) {
+            return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-    $data = $r->validate([
-        'password' => ['required','string'],
-    ]);
+        $data = $r->validate([
+            'password' => ['required','string'],
+        ]);
 
-    if (!\Illuminate\Support\Facades\Hash::check($data['password'], $u->password)) {
-        return response()->json(['message' => 'Contraseña incorrecta'], 422);
+        if (!\Illuminate\Support\Facades\Hash::check($data['password'], $u->password)) {
+            return response()->json(['message' => 'Contraseña incorrecta'], 422);
+        }
+
+        // Confirmación server-side: vale 5 minutos para acciones destructivas
+        // (la verifican con assertPasswordConfirmed). El valid_until sigue
+        // informándose al frontend por compatibilidad.
+        Cache::put('pwdconfirm_' . $u->id, true, 300);
+
+        $until = now()->addMinutes(5); // TTL sugerido para el front
+        return [
+            'ok'          => true,
+            'valid_until' => $until->toIso8601String(),
+        ];
     }
-
-    // Confirmación server-side: vale 5 minutos para acciones destructivas
-    // (la verifican con assertPasswordConfirmed). El valid_until sigue
-    // informándose al frontend por compatibilidad.
-    Cache::put('pwdconfirm_' . $u->id, true, 300);
-
-    $until = now()->addMinutes(5); // TTL sugerido para el front
-    return [
-        'ok'          => true,
-        'valid_until' => $until->toIso8601String(),
-    ];
-}
 
     // Emite un ticket de impresión (60s, reutilizable) para abrir vistas
     // imprimibles en iframes/ventanas que no pueden mandar header Authorization.

@@ -231,6 +231,15 @@
   color: var(--gray-700);
 }
 
+/* Cómo se calcula el porcentaje, al lado del detalle. */
+.hist-criterio {
+  padding: var(--sp-2) var(--sp-4);
+  border-bottom: 1px solid var(--gray-100);
+  font-size: var(--text-xs);
+  color: var(--gray-500);
+  line-height: 1.4;
+}
+
 .hist-table-wrap {
   overflow-x: auto;
 }

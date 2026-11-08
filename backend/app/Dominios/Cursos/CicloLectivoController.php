@@ -4,6 +4,7 @@ namespace App\Dominios\Cursos;
 
 use App\Http\Controllers\Controller;
 
+use App\Dominios\Alumnos\Alumno;
 use App\Dominios\Cursos\Curso;
 use App\Dominios\Cursos\ParametroDivision;
 use Illuminate\Http\JsonResponse;
@@ -12,6 +13,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use App\Support\ActivityLogger;
 use App\Support\AuthorizesScope;
+use App\Support\SchoolYear;
 
 // Controlador para la gestion del ciclo lectivo.
 // Permite habilitar nuevos anios y divisiones, asi como ejecutar la promocion
@@ -37,7 +39,7 @@ class CicloLectivoController extends Controller
 
         $data = $request->validate([
             'years'            => 'required|array|min:1',
-            'years.*'          => 'integer|min:1|max:12',
+            'years.*'          => 'integer|min:1|max:' . SchoolYear::LIMITE,
             'divisions'        => 'array',
             'divisions.*'      => 'string|regex:/^[0-9]$/',
             'activate_courses' => 'boolean',
@@ -83,7 +85,10 @@ class CicloLectivoController extends Controller
             ->map(fn($rows) => $rows->pluck('division')->values())
             ->toArray();
 
-        ActivityLogger::log($request, 'Habilitó años: ' . implode(', ', $years), 'ciclo.enable_years', 'ParametroDivision', null, null, ['years' => $years, 'divisions' => $divisions]);
+        ActivityLogger::log($request, 'Habilitó años: ' . implode(', ', $years), 'ciclo.enable_years', 'ParametroDivision', null, null, [
+            'Años habilitados' => $years,
+            'Divisiones'       => $divisions,
+        ]);
 
         return response()->json($map);
     }
@@ -103,12 +108,9 @@ class CicloLectivoController extends Controller
      */
     public function promote(Request $request): JsonResponse
     {
-        // Promocionar mueve a TODOS los alumnos: exige contraseña reciente.
-        $this->assertPasswordConfirmed($request);
-
         $data = $request->validate([
             'dry_run' => 'boolean',
-            'max_year'=> 'nullable|integer|min:1|max:12',
+            'max_year'=> 'nullable|integer|min:1|max:' . SchoolYear::LIMITE,
             'sentido' => 'nullable|string',
         ]);
 
@@ -123,16 +125,28 @@ class CicloLectivoController extends Controller
         }
 
         $dry = (bool)($data['dry_run'] ?? false);
+
+        // Promocionar mueve a TODOS los alumnos: exige contraseña reciente. La
+        // simulación no escribe nada, así que la pide sólo cuando se aplica
+        // (antes también la exigía al dry-run y la vista previa no se podía ver).
+        if (!$dry) {
+            $this->assertPasswordConfirmed($request);
+        }
+
         $max = $data['max_year'] ?? (Curso::where('activo', true)->max('anio') ?? 7);
 
-        // Solo alumnos no egresados (egreso_year IS NULL)
+        // Solo alumnos que cursan: egresados e inactivos (abandono) no suben de
+        // año. egreso_year ya los excluye en la baja normal; el estado corta el
+        // caso de una baja cargada sin curso recordado.
         $toPromote = DB::table('alumnos')
             ->whereNull('egreso_year')
+            ->whereNotIn('estado', Alumno::ESTADOS_BAJA)
             ->where('anio', '<', $max)
             ->count();
 
         $toGraduate = DB::table('alumnos')
             ->whereNull('egreso_year')
+            ->whereNotIn('estado', Alumno::ESTADOS_BAJA)
             ->where('anio', '>=', $max)
             ->count();
 
@@ -155,6 +169,7 @@ class CicloLectivoController extends Controller
             DB::table('alumnos')
                 ->select('id','anio','division')
                 ->whereNull('egreso_year')
+                ->whereNotIn('estado', Alumno::ESTADOS_BAJA)
                 ->where('anio', '>=', $max)
                 ->orderBy('id')
                 ->chunkById(500, function ($rows) use ($year) {
@@ -174,6 +189,7 @@ class CicloLectivoController extends Controller
             // 2) Promocionar (subir de año a los que están por debajo del tope)
             DB::table('alumnos')
                 ->whereNull('egreso_year')
+                ->whereNotIn('estado', Alumno::ESTADOS_BAJA)
                 ->where('anio', '<', $max)
                 ->update([
                     'anio'       => DB::raw('anio + 1'),
@@ -181,7 +197,11 @@ class CicloLectivoController extends Controller
                 ]);
         });
 
-        ActivityLogger::log($request, 'Promoción ciclo lectivo: ' . $toPromote . ' promovidos, ' . $toGraduate . ' egresados', 'ciclo.promote', null, null, null, ['promote' => $toPromote, 'graduate' => $toGraduate, 'max_year' => $max]);
+        ActivityLogger::log($request, 'Promoción del ciclo: ' . $toPromote . ' alumnos subieron de año y ' . $toGraduate . ' egresaron', 'ciclo.promote', null, null, null, [
+            'Alumnos que subieron de año' => $toPromote,
+            'Alumnos que egresaron'       => $toGraduate,
+            'Año máximo'                  => $max,
+        ]);
 
         return response()->json([
             'dry_run'   => false,

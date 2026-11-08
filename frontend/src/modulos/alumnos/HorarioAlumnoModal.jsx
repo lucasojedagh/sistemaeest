@@ -10,6 +10,7 @@ import { cursoLabel, parseCurso } from "../../compartido/lib/cursos";
 import { useDeshacerAviso } from "../../compartido/lib/deshacer.jsx";
 import useAviso from "../../compartido/componentes/modals/useAviso";
 import { bloquearScroll } from "../../compartido/lib/lockScroll";
+import { accionHabilitada } from "../../compartido/lib/permisos";
 import "./HorarioAlumnoModal.css";
 
 /*
@@ -159,10 +160,11 @@ function SegmentedTabs({ value, onChange }) {
 /* ============================ Componente principal ============================ */
 /* Modal de horario del alumno con paneles de resumen y cronograma editable */
 export default function HorarioAlumnoModal({ visible, alumno, onClose, onGuardar, soloLectura = false }) {
-  // Solo lectura: el profesor nunca edita la grilla, y tampoco quien ve a un
-  // alumno de un curso que no puede modificar. Ver el horario es lectura.
+  // Solo lectura: la casilla "Asignar horario a un alumno" y el alcance de
+  // escritura sobre el curso del alumno (que aporta `soloLectura` desde la
+  // pantalla). Ver el horario siempre es lectura.
   const { user } = useAuth();
-  const esSoloLectura = user?.role === "profesor" || soloLectura;
+  const esSoloLectura = !accionHabilitada(user, 'alumnos.horario', user?.role !== 'profesor') || soloLectura;
   const { ofrecerDeshacer } = useDeshacerAviso();
   const [mostrarAviso, pedirConfirmacion, avisoModal, mostrarToast] = useAviso();
 

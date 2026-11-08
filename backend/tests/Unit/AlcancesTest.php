@@ -39,7 +39,10 @@ class AlcancesTest extends TestCase
         $rol = RoleHierarchy::PROFESOR;
         $this->assertSame(Alcances::ASIGNADO, Alcances::ver($rol, 'alumnos'));
         $this->assertSame(Alcances::ASIGNADO, Alcances::editar($rol, 'calificaciones'));
-        $this->assertSame(Alcances::ASIGNADO, Alcances::editar($rol, 'asistencia'));
+        // La asistencia la ve (sus cursos) pero no la toma: el rango 1 nace sin
+        // alcance de escritura sobre asistencia.
+        $this->assertSame(Alcances::ASIGNADO, Alcances::ver($rol, 'asistencia'));
+        $this->assertSame(Alcances::NADA, Alcances::editar($rol, 'asistencia'));
         foreach (['alumnos', 'cursos', 'profesores', 'usuarios'] as $area) {
             $this->assertSame(Alcances::NADA, Alcances::editar($rol, $area), "{$area} editar");
         }
@@ -143,6 +146,32 @@ class AlcancesTest extends TestCase
     {
         // Sin fila en roles_config un rol desconocido es nivel 0: nada.
         $this->assertSame(Alcances::NADA, Alcances::ver('auxiliar', 'alumnos'));
+    }
+
+    public function test_el_defecto_del_rango_copia_al_rol_de_sistema(): void
+    {
+        // "Crear rol a partir de Profesor" copia el alcance efectivo del rol, así
+        // que el plano del rango 1 tiene que ser idéntico al del profesor. Si se
+        // mueve uno sin el otro, el rol copiado nace haciendo otra cosa.
+        $pares = [
+            RoleHierarchy::PROFESOR        => 1,
+            RoleHierarchy::PRECEPTOR       => 2,
+            RoleHierarchy::PROSECRETARIA   => 3,
+            RoleHierarchy::JEFE_PRECEPTORES => 3,
+            RoleHierarchy::DIRECTIVO       => 4,
+            RoleHierarchy::ADMIN           => 5,
+        ];
+        foreach ($pares as $rol => $nivel) {
+            $this->assertSame(
+                Alcances::defecto($rol),
+                Alcances::defectoNivel($nivel),
+                "el rango {$nivel} y el rol {$rol} nacieron con alcances distintos"
+            );
+        }
+
+        // La regla concreta que se pidió: el rango 1 ve la asistencia pero no la toma.
+        $this->assertSame(Alcances::ASIGNADO, Alcances::defectoNivel(1)['asistencia']['ver']);
+        $this->assertSame(Alcances::NADA, Alcances::defectoNivel(1)['asistencia']['editar']);
     }
 
     public function test_modulos_por_defecto_y_su_saneamiento(): void

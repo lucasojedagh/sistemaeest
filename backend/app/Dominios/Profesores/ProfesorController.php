@@ -88,24 +88,16 @@ class ProfesorController extends Controller
         $profesores = $query->orderBy('apellido')->orderBy('nombre')
             ->paginate(\App\Support\Paginacion::porPagina($req, 100, 2000));
 
-        // Recolectar emails de filas sin DNI para resolver en un solo query
-        $nullDniEmails = [];
-        if ($full) {
-            foreach ($profesores->items() as $p) {
-                if (!$p->dni && $p->email) {
-                    $nullDniEmails[] = strtolower(trim($p->email));
-                }
+        // La cuenta ligada se resuelve por e-mail (profesores no tiene user_id):
+        // un solo query para toda la página. De ahí salen el DNI de respaldo y la
+        // versión de la foto de perfil.
+        $emails = [];
+        foreach ($profesores->items() as $p) {
+            if ($p->email) {
+                $emails[] = strtolower(trim($p->email));
             }
         }
-
-        $fallbackMap = [];
-        if ($nullDniEmails) {
-            $nullDniEmails = array_unique($nullDniEmails);
-            $fallbackMap = \App\Dominios\Usuarios\User::whereIn('email', $nullDniEmails)
-                ->pluck('dni', 'email')
-                ->mapWithKeys(fn ($v, $k) => [strtolower(trim($k)) => $v])
-                ->all();
-        }
+        $cuentas = $this->cuentasPorEmail($emails);
 
         // Etiquetas de suplencia (quién cubre a quién) en una sola consulta.
         $resumenSupl = \App\Support\Suplencias::resumenPara(
@@ -116,7 +108,7 @@ class ProfesorController extends Controller
             collect($profesores->items())->map(fn (Profesor $p) => $p->id)->all()
         );
 
-        $profesores->through(function (Profesor $p) use ($fallbackMap, $req, $full, $resumenSupl, $materiasSuplidas) {
+        $profesores->through(function (Profesor $p) use ($cuentas, $req, $full, $resumenSupl, $materiasSuplidas) {
             $asigs = $p->asignaciones->map(function (ProfesorAsignacion $a) {
                 $curso = $a->anio . '°' . ($a->division ? ' ' . $a->division : '');
                 return [
@@ -129,13 +121,11 @@ class ProfesorController extends Controller
                 ];
             })->values();
 
+            $cuenta = $cuentas[strtolower(trim((string) $p->email))] ?? null;
+
             $dni = null;
             if ($full) {
-                $dni = $p->dni;
-                if (!$dni && $p->email) {
-                    $key = strtolower(trim($p->email));
-                    $dni = $fallbackMap[$key] ?? null;
-                }
+                $dni = $p->dni ?: ($cuenta['dni'] ?? null);
             }
 
             return [
@@ -145,7 +135,8 @@ class ProfesorController extends Controller
                 'email'         => $p->email,
                 'dni'           => $dni,
                 'creado_en'     => $full ? $p->created_at?->toDateTimeString() : null,
-                'user_id'       => null,
+                'user_id'       => $cuenta['id'] ?? null,
+                'avatar_version' => $cuenta['v'] ?? null,
                 'estado'        => $p->estado,
                 'suplente'      => (bool) $p->suplente,
                 'observaciones' => ($full && $this->canSeeObservaciones($req, $p->email)) ? $p->observaciones : null,
@@ -167,6 +158,7 @@ class ProfesorController extends Controller
     public function show(Request $req, Profesor $profesor)
     {
         $profesor->load('asignaciones.materia');
+        $cuenta = $this->cuentaDeEmail($profesor->email);
 
         // Rangos bajos: solo contacto (nombre/email) y cursos asignados.
         if (!$this->userCanSeeFullFicha($req)) {
@@ -177,6 +169,10 @@ class ProfesorController extends Controller
                 'nombre'   => $profesor->nombre,
                 'apellido' => $profesor->apellido,
                 'email'    => $profesor->email,
+                // La foto no es un dato personal: es la cara que ya se ve en la
+                // lista, así que la rama recortada también la trae.
+                'user_id'       => $cuenta['id'] ?? null,
+                'avatar_version' => $cuenta['v'] ?? null,
                 'asignaciones' => $profesor->asignaciones->map(function (ProfesorAsignacion $a) {
                     return [
                         'anio'     => $a->anio,
@@ -199,8 +195,9 @@ class ProfesorController extends Controller
             'nombre'        => $profesor->nombre,
             'apellido'      => $profesor->apellido,
             'email'         => $profesor->email,
-            'dni'           => $profesor->dni ?? $this->dniFromUser($profesor->email),
-            'user_id'       => null,
+            'dni'           => $profesor->dni ?: ($cuenta['dni'] ?? null),
+            'user_id'       => $cuenta['id'] ?? null,
+            'avatar_version' => $cuenta['v'] ?? null,
             'estado'        => $profesor->estado,
             'suplente'      => (bool) $profesor->suplente,
             'observaciones' => $this->canSeeObservaciones($req, $profesor->email) ? $profesor->observaciones : null,
@@ -240,7 +237,7 @@ class ProfesorController extends Controller
 
             ActivityLogger::log($req, 'Creó profesor ' . $prof->apellido . ', ' . $prof->nombre, 'profesor.store', 'Profesor', $prof->id);
 
-            return $this->show($req, $prof);
+            return $this->show($req, $prof)->setStatusCode(201);
         });
     }
 
@@ -417,6 +414,13 @@ class ProfesorController extends Controller
         $division = $req->query('division'); // opcional
         $estado   = $req->query('estado', 'Activo');
 
+        // El mapa se pide para UN curso: es el selector de docente del modal de
+        // horario. Antes recortaba sólo por año y división, así que una cuenta
+        // con alcance "solo los asignados" podía descargar la planta funcional
+        // completa de un curso ajeno. El mismo candado que ya frena a
+        // GET /api/horarios/{anio}/{division}.
+        $this->assertCanReadCurso($req, $anio, $division, 'cursos');
+
         $asigs = ProfesorAsignacion::query()
             ->with(['profesor','materia'])
             ->where('anio', $anio)
@@ -587,11 +591,30 @@ class ProfesorController extends Controller
             && strtolower(trim($profesorEmail)) === strtolower(trim((string) $u->email));
     }
 
-    private function dniFromUser(?string $email): ?string
+    // La tabla profesores no tiene user_id: el vínculo con la cuenta es el e-mail
+    // institucional. Se resuelven de una sola vez para no consultar por cada fila.
+    private function cuentasPorEmail(array $emails): array
+    {
+        $emails = array_values(array_filter(array_unique($emails)));
+        if (!$emails) return [];
+
+        $mapa = [];
+        foreach (\App\Dominios\Usuarios\User::whereIn('email', $emails)
+                     ->get(['id', 'email', 'dni', 'avatar']) as $u) {
+            $mapa[strtolower(trim((string) $u->email))] = [
+                'id'  => (int) $u->id,
+                'dni' => $u->dni,
+                'v'   => $u->avatar_version,
+            ];
+        }
+        return $mapa;
+    }
+
+    private function cuentaDeEmail(?string $email): ?array
     {
         if (!$email) return null;
-        $user = \App\Dominios\Usuarios\User::where('email', $email)->first();
-        return $user?->dni ?? null;
+        $key = strtolower(trim($email));
+        return $this->cuentasPorEmail([$key])[$key] ?? null;
     }
 
     private function validatePayload(Request $req, ?int $ignoreId = null): array
@@ -602,7 +625,7 @@ class ProfesorController extends Controller
             'nombre'   => ['required','string','max:120'],
             'apellido' => ['required','string','max:120'],
             'email'    => ['nullable','email','max:160', Rule::unique('profesores','email')->ignore($ignoreId)],
-            'dni'      => ['nullable','string','max:20'],
+            'dni'      => ['nullable','string','max:15'],
             'estado'   => ['nullable', Rule::in(['Activo','Licencia'])],
             'suplente' => ['nullable','boolean'],
             'observaciones' => ['nullable','string'],
@@ -610,8 +633,13 @@ class ProfesorController extends Controller
             'asignaciones'            => ['required','array'],
             'asignaciones.*.anio'     => ['required','integer','min:1','max:'.$maxYear],
             'asignaciones.*.division' => ['nullable','string','max:1'],
-            'asignaciones.*.grupo'    => ['nullable','string','size:1', Rule::in(['A','B'])],
+            // El grupo se guarda en mayúscula (upsertAsignaciones), así que se
+            // acepta en cualquier caso, igual que la división.
+            'asignaciones.*.grupo'    => ['nullable','string','size:1', Rule::in(['A','B','a','b'])],
             'asignaciones.*.materia'  => ['required','string','max:120'],
+        ], [
+            // El mensaje genérico habla de "letras" y el DNI son números.
+            'dni.max' => 'El DNI no puede tener más de 15 caracteres.',
         ]);
     }
 

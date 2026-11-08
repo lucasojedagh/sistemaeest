@@ -4,20 +4,16 @@ namespace App\Dominios\Sistema;
 
 use App\Http\Controllers\Controller;
 
-use App\Mail\BackupReady;
 use App\Support\ActivityLogger;
-use App\Support\RoleHierarchy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
-use ZipArchive;
 
-// Controlador para la generacion y envio de backups de la base de datos.
-// Intenta realizar un dump SQL via mysqldump; si falla, genera un archivo JSON
-// comprimido en ZIP como plan de contingencia.
+// Diagnóstico, descarga y restauración de la base de datos. Lo puede usar solo el
+// rol Admin: las rutas lo filtran con role:admin y el catálogo reserva estas
+// acciones en Permisos::SOLO_ADMIN. El envío del backup por mail se sacó del
+// sistema: mandaba la base completa a un correo y no se usaba.
 class BackupController extends Controller
 {
     use \App\Support\AuthorizesScope;
@@ -55,199 +51,12 @@ class BackupController extends Controller
         ]);
     }
 
-    // Genera un backup de la base de datos y lo envia por email.
-    // Intenta primero un dump SQL con mysqldump; si falla, genera un archivo JSON comprimido en ZIP.
-    /** Endpoint del botón: intenta SQL; si falla, envía JSON(.zip). */
-    public function emailBackup(Request $request)
-    {
-        // Exfiltración de la base completa: exige confirmación de contraseña reciente.
-        $this->assertPasswordConfirmed($request);
-
-        $request->validate([
-            'email' => ['required','email'],
-        ]);
-        $email = $request->input('email');
-
-        // Carpeta destino
-        $dir = storage_path('app/backups');
-        if (!is_dir($dir)) @mkdir($dir, 0755, true);
-
-        // Intenta generar un backup SQL con mysqldump como metodo principal.
-        // 1) INTENTO .SQL
-        $sql = $this->trySqlDump($dir);
-        if ($sql['ok']) {
-            Mail::to($email)->send(new BackupReady('sql', $sql['filename']));
-            ActivityLogger::log($request, 'Envió backup SQL a ' . $email, 'backup.email_sql');
-            return response()->json([
-                'status' => 'ok',
-                'mode'   => 'sql',
-                'file'   => $sql['filename'],
-                'size'   => filesize($dir . DIRECTORY_SEPARATOR . $sql['filename']),
-            ]);
-        }
-
-        // Si mysqldump fallo, utiliza el plan de contingencia: exporta JSON comprimido en ZIP.
-        // 2) FALLBACK: JSON .zip (seguro en cualquier entorno)
-        $json = $this->makeJsonZip($dir);
-        if ($json['ok']) {
-            Mail::to($email)->send(new BackupReady('json', $json['filename']));
-            ActivityLogger::log($request, 'Envió backup JSON a ' . $email, 'backup.email_json');
-            return response()->json([
-                'status' => 'ok',
-                'mode'   => 'json',
-                'file'   => $json['filename'],
-                'size'   => filesize($dir . DIRECTORY_SEPARATOR . $json['filename']),
-                'sql_error' => $sql['error'] ?? null,
-            ]);
-        }
-
-        ActivityLogger::log($request, 'Fallo envío de backup a ' . $email, 'backup.email_error');
-        return response()->json([
-            'message'   => 'No se pudo generar el backup',
-            'sql_error' => $sql['error'] ?? null,
-            'json_error'=> $json['error'] ?? null,
-        ], 500);
-    }
-
-    // Intenta generar un dump SQL de la base de datos usando mysqldump.
-    // Retorna un array con 'ok' true/false y el nombre del archivo o el error.
-    /** Genera .sql con mysqldump (true si salió bien). */
-    private function trySqlDump(string $dir): array
-    {
-        try {
-            $db = config('database.connections.mysql');
-            $host = in_array($db['host'] ?? '', ['localhost','','::1'], true) ? '127.0.0.1' : ($db['host'] ?? '127.0.0.1');
-            $port = (string)($db['port'] ?? 3306);
-            $user = (string)($db['username'] ?? 'root');
-            $pass = (string)($db['password'] ?? '');
-            $name = (string)($db['database'] ?? '');
-
-            if ($name === '') {
-                return ['ok'=>false, 'error'=>'DB no configurada'];
-            }
-
-            $file = sprintf(
-                '%s_db_%s.sql',
-                Str::slug(config('app.name','app'), '_'),
-                now()->format('Y-m-d_H-i-s')
-            );
-            $full = $dir . DIRECTORY_SEPARATOR . $file;
-
-            $dump = $this->resolveDumpExe();
-            if ($dump['type'] !== 'PATH' && !$dump['exists']) {
-                return ['ok'=>false, 'error'=>"mysqldump no encontrado en {$dump['exe']}"];
-            }
-
-            // Args (sin usar '>' redirection; escribimos con --result-file)
-            $args = [
-                $dump['exe'],
-                '--protocol=tcp',
-                '--host='.$host,
-                '--port='.$port,
-                '--user='.$user,
-                '--single-transaction',
-                '--skip-lock-tables',
-                '--routines',
-                '--events',
-                '--set-gtid-purged=OFF',
-                '--default-character-set=utf8mb4',
-                '--result-file='.$full,
-                $name,
-            ];
-
-            // Heredamos el entorno + agregamos MYSQL_PWD por seguridad
-            $env = ['MYSQL_PWD' => $pass];
-            $proc = new Process($args, null, $pass!=='' ? $env : null);
-            $proc->setTimeout(300);
-            $proc->run();
-
-            if ($proc->isSuccessful() && is_file($full) && filesize($full) > 0) {
-                return ['ok'=>true, 'filename'=>$file];
-            }
-
-            // Devuelvo detalle de error para depurar
-            return [
-                'ok'=>false,
-                'error'=> $proc->getErrorOutput() ?: $proc->getOutput() ?: 'mysqldump desconocido',
-            ];
-        } catch (\Throwable $e) {
-            return ['ok'=>false, 'error'=>$e->getMessage()];
-        }
-    }
-
-    // Plan de contingencia: exporta todas las tablas de la base de datos a archivos JSON
-    // y los comprime en un archivo ZIP.
-    /** Plan B: exporta todas las tablas a JSON y las comprime en .zip */
-    private function makeJsonZip(string $dir): array
-    {
-        $db = config('database.connections.mysql');
-        $name = (string)($db['database'] ?? 'db');
-
-        $tmpDir = storage_path('app/tmp_json_backup_'.Str::random(6));
-        @mkdir($tmpDir, 0755, true);
-
-        $zipName = sprintf(
-            '%s_json_%s.zip',
-            Str::slug(config('app.name','app'), '_'),
-            now()->format('Y-m-d_H-i-s')
-        );
-        $zipFull = $dir . DIRECTORY_SEPARATOR . $zipName;
-
-        try {
-            // Listado de tablas
-            $tables = collect(DB::select('SHOW TABLES'));
-            if ($tables->isEmpty()) {
-                return ['ok'=>false, 'error'=>'La base no tiene tablas (SHOW TABLES vacío)'];
-            }
-
-            $col = collect((array)$tables->first())->keys()->first(); // nombre de la columna devuelta por SHOW TABLES
-            foreach ($tables as $t) {
-                $table = $t->$col;
-                $rows  = DB::table($table)->get();
-                file_put_contents(
-                    $tmpDir.DIRECTORY_SEPARATOR.$table.'.json',
-                    $rows->toJson(JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)
-                );
-            }
-
-            // Armar ZIP
-            $zip = new ZipArchive();
-            if ($zip->open($zipFull, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-                return ['ok'=>false, 'error'=>'No pude crear ZIP'];
-            }
-            foreach (scandir($tmpDir) as $f) {
-                if ($f === '.' || $f === '..') continue;
-                $zip->addFile($tmpDir.DIRECTORY_SEPARATOR.$f, $name.'/'.$f);
-            }
-            $zip->close();
-
-            // limpiar temp
-            foreach (scandir($tmpDir) as $f) {
-                if ($f === '.' || $f === '..') continue;
-                @unlink($tmpDir.DIRECTORY_SEPARATOR.$f);
-            }
-            @rmdir($tmpDir);
-
-            return ['ok'=>true, 'filename'=>$zipName];
-        } catch (\Throwable $e) {
-            // limpiar si quedó algo
-            if (is_dir($tmpDir)) {
-                foreach (scandir($tmpDir) as $f) {
-                    if ($f === '.' || $f === '..') continue;
-                    @unlink($tmpDir.DIRECTORY_SEPARATOR.$f);
-                }
-                @rmdir($tmpDir);
-            }
-            return ['ok'=>false, 'error'=>$e->getMessage()];
-        }
-    }
-
-    // Resuelve la ruta al ejecutable de mysqldump, ya sea desde la variable de entorno DB_BACKUP_MYSQLDUMP
-    // o desde el PATH del sistema.
-    /** Resuelve el ejecutable mysqldump desde .env (directorio o archivo) */
+    // Resuelve la ruta al ejecutable de mysqldump: DB_BACKUP_MYSQLDUMP (carpeta
+    // o archivo) o el PATH del sistema. Sólo lo usa el diagnóstico: el respaldo
+    // y la restauración se hacen en PHP puro y no necesitan ningún ejecutable.
     private function resolveDumpExe(): array
     {
-        $hint = trim((string) env('DB_BACKUP_MYSQLDUMP', ''));
+        $hint = trim((string) config('enro.backup_mysqldump', ''));
         $isWin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
         $exeName = $isWin ? 'mysqldump.exe' : 'mysqldump';
 
@@ -257,25 +66,6 @@ class BackupController extends Controller
         $norm = $isWin ? str_replace('/', DIRECTORY_SEPARATOR, $hint) : $hint;
 
         if (preg_match('/mysqldump(\.exe)?$/i', $norm)) {
-            return ['exe'=>$norm, 'type'=>'FILE', 'exists'=>is_file($norm)];
-        }
-        $full = rtrim($norm, "\\/").DIRECTORY_SEPARATOR.$exeName;
-        return ['exe'=>$full, 'type'=>'DIR', 'exists'=>is_file($full)];
-    }
-
-    // Resuelve la ruta al ejecutable mysql CLI para importar dumps SQL.
-    private function resolveMysqlExe(): array
-    {
-        $hint = trim((string) env('DB_BACKUP_MYSQL', ''));
-        $isWin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-        $exeName = $isWin ? 'mysql.exe' : 'mysql';
-
-        if ($hint === '') {
-            return ['exe'=>$exeName, 'type'=>'PATH', 'exists'=>true];
-        }
-        $norm = $isWin ? str_replace('/', DIRECTORY_SEPARATOR, $hint) : $hint;
-
-        if (preg_match('/mysql(\.exe)?$/i', $norm)) {
             return ['exe'=>$norm, 'type'=>'FILE', 'exists'=>is_file($norm)];
         }
         $full = rtrim($norm, "\\/").DIRECTORY_SEPARATOR.$exeName;
@@ -452,6 +242,11 @@ class BackupController extends Controller
 
         $request->validate([
             'file' => 'required|file|mimes:sql,txt|max:51200',
+        ], [
+            // Los kilobytes de la regla no se leen en pantalla: se dice en MB.
+            'file.required' => 'Elegí el archivo .sql que querés restaurar.',
+            'file.mimes' => 'Solo se restauran archivos .sql generados por este sistema (o su copia .txt).',
+            'file.max' => 'El respaldo no puede pesar más de 50 MB. Si tu base es más grande, pedile al administrador que suba ese límite.',
         ]);
 
         $file = $request->file('file');
@@ -482,6 +277,13 @@ class BackupController extends Controller
         $pdo = DB::connection()->getPdo();
         $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
 
+        // Un solo commit al final. Con autocommit por sentencia, cada INSERT es
+        // una transacción que va a disco: el restore del .sql de la base entera
+        // (2 MB, 8021 sentencias) tardaba 75 s y se cortaba por timeout del
+        // servidor, dejando la base a mitad de camino. Así tarda 5 s.
+        $pdo->exec('SET UNIQUE_CHECKS=0');
+        $pdo->exec('SET autocommit=0');
+
         $statements = array_filter(
             array_map('trim', $this->splitSqlStatements($sqlContent)),
             fn($s) => $s !== '' && !str_starts_with($s, '--')
@@ -510,7 +312,18 @@ class BackupController extends Controller
                 }
             }
         } finally {
+            // Se confirma lo que anduvo: si el import fue parcial, el reporte de
+            // abajo dice cuántas sentencias se aplicaron y esas quedan escritas.
+            // Los DROP/CREATE TABLE del archivo ya confirmaron solos (MySQL no
+            // puede deshacer DDL), así que revertir dejaría las tablas vacías.
             try {
+                $pdo->exec('COMMIT');
+            } catch (\Throwable $e) {
+                // Sin commit no hay nada que informar: se sigue con el reporte.
+            }
+            try {
+                $pdo->exec('SET autocommit=1');
+                $pdo->exec('SET UNIQUE_CHECKS=1');
                 $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
             } catch (\Throwable $e) {
                 // No enmascara el resultado del import si el restore de FK falla.

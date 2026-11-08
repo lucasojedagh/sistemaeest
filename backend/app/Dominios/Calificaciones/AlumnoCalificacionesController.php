@@ -259,7 +259,9 @@ class AlumnoCalificacionesController extends Controller
                         if ($valor === null) continue;
 
                         $fecha = $this->normalizeFecha($it['fecha'] ?? null);
-                        $ciclo = (int)date('Y', strtotime($fecha));
+                        // La fecha ya esta normalizada por normalizeFecha: el ciclo
+                        // se lee de esa cadena, no de un parseo que podia fallar.
+                        $ciclo = (int) substr($fecha, 0, 4);
 
                         $insert[] = [
                             'alumno_id'     => $alumno->id,
@@ -274,7 +276,15 @@ class AlumnoCalificacionesController extends Controller
                             'updated_at'    => now(),
                         ];
 
-                        $touched[] = ['anio' => $anio, 'division' => $division, 'ciclo' => $ciclo];
+                        // El recálculo de estado agrupa por materia: sin estos dos
+                        // campos el grupo queda incompleto y revienta más adelante.
+                        $touched[] = [
+                            'anio'       => $anio,
+                            'division'   => $division,
+                            'ciclo'      => $ciclo,
+                            'materia_id' => $materia->id,
+                            'tipo'       => 'regular',
+                        ];
                     }
                     if ($insert) AlumnoCalificacion::insert($insert);
                 }
@@ -338,17 +348,24 @@ class AlumnoCalificacionesController extends Controller
             }
 
             $tipos = array_unique(array_column($touched, 'tipo'));
-            // Se manda la foto completa de las notas: el diff centralizado deja
-            // solo los campos que cambiaron de verdad.
+            // Se manda la foto de las materias editadas: el diff centralizado deja
+            // solo los campos que cambiaron de verdad, y las materias que no se
+            // tocaron no tienen que aparecer en la tarjeta.
+            $materiaIds = array_values(array_unique(array_filter(array_column($touched, 'materia_id'))));
+            $nombres = Materia::whereIn('id', $materiaIds)->pluck('nombre')->all();
             ActivityLogger::log(
                 $req,
-                'Guardó calificaciones de ' . $alumno->apellido . ', ' . $alumno->nombre . ' (' . implode(', ', $tipos) . ')',
+                'Guardó calificaciones de ' . $alumno->apellido . ', ' . $alumno->nombre
+                    . ($nombres ? ' (' . implode(', ', $nombres) . ')' : ' (' . implode(', ', $tipos) . ')'),
                 'calificaciones.update',
                 'Alumno',
                 $alumno->id,
-                $this->buildGradesSummary($calificacionesAntes),
+                $this->buildGradesSummary($this->soloMaterias($calificacionesAntes, $materiaIds)),
                 $this->buildGradesSummary(
-                    AlumnoCalificacion::where('alumno_id', $alumno->id)->get()
+                    $this->soloMaterias(
+                        AlumnoCalificacion::where('alumno_id', $alumno->id)->get(),
+                        $materiaIds
+                    )
                 )
             );
 
@@ -511,7 +528,10 @@ class AlumnoCalificacionesController extends Controller
         }
 
         $fallidos = [];
-        $gradesByStudent = [];
+        // Cambios agrupados por materia: si el pedido trajo más de una, cada una
+        // va en su propia tarjeta. Juntas daban una línea con las notas de las
+        // dos materias mezcladas y un título que no decía cuál era cuál.
+        $cambiosPorMateria = [];
 
         // Una sola lectura de calificaciones previas para todos (evita N+1).
         // Se refresca por alumno tras guardar, así un alumno repetido en el
@@ -521,10 +541,8 @@ class AlumnoCalificacionesController extends Controller
         foreach ($items as $item) {
             $alumno = $item['alumno'];
             try {
-                DB::transaction(function () use ($alumno, $item, &$gradesByStudent, &$previasPorAlumno) {
-                    $oldSummary = $this->buildGradesSummary(
-                        $previasPorAlumno[$alumno->id] ?? collect()
-                    );
+                DB::transaction(function () use ($alumno, $item, &$cambiosPorMateria, &$previasPorAlumno) {
+                    $previas = $previasPorAlumno[$alumno->id] ?? collect();
 
                     $touched = [];
                     $this->applyEntradas($alumno, $item['entradas'], $touched);
@@ -535,12 +553,21 @@ class AlumnoCalificacionesController extends Controller
 
                         $nuevas = AlumnoCalificacion::where('alumno_id', $alumno->id)->get();
                         $previasPorAlumno[$alumno->id] = $nuevas;
-                        $newSummary = $this->buildGradesSummary($nuevas);
-                        if ($oldSummary != $newSummary) {
-                            $gradesByStudent[$alumno->apellido . ', ' . $alumno->nombre] = [
-                                'old' => $oldSummary,
-                                'new' => $newSummary,
-                            ];
+
+                        // La foto del historial se limita a la materia editada: la
+                        // tarjeta se titula con esa materia y no tiene que mostrar
+                        // las notas de las demás del alumno.
+                        $nombre = $alumno->apellido . ', ' . $alumno->nombre;
+                        foreach (array_unique(array_filter(array_column($touched, 'materia_id'))) as $materiaId) {
+                            $oldSummary = $this->buildGradesSummary($this->soloMaterias($previas, [$materiaId]));
+                            $newSummary = $this->buildGradesSummary($this->soloMaterias($nuevas, [$materiaId]));
+                            if ($oldSummary != $newSummary) {
+                                $cambiosPorMateria[$materiaId][$nombre] = [
+                                    'old' => $oldSummary,
+                                    'new' => $newSummary,
+                                    'curso' => $this->cursoDeEntradas($item['entradas'], $materiaId),
+                                ];
+                            }
                         }
                     }
                 });
@@ -553,17 +580,26 @@ class AlumnoCalificacionesController extends Controller
             }
         }
 
-        // Historial: una sola tarjeta con cada alumno en el detalle.
-        if (!empty($gradesByStudent)) {
+        // Historial: una tarjeta por materia, con cada alumno en el detalle.
+        foreach ($cambiosPorMateria as $materiaId => $porAlumno) {
             $oldValues = [];
             $newValues = [];
-            foreach ($gradesByStudent as $nombre => $g) {
+            $cursos = [];
+            foreach ($porAlumno as $nombre => $g) {
                 $oldValues[$nombre] = $g['old'];
                 $newValues[$nombre] = $g['new'];
+                if ($g['curso'] !== '') $cursos[$g['curso']] = true;
             }
-            $n = count($gradesByStudent);
-            $action = 'Modificó calificaciones de ' . $n . ' ' . ($n === 1 ? 'alumno' : 'alumnos');
-            ActivityLogger::log($req, $action, 'calificaciones.update', 'Alumno', null, $oldValues ?: null, $newValues ?: null);
+
+            ActivityLogger::log(
+                $req,
+                $this->tituloPlanilla($materiaId, array_keys($cursos), count($porAlumno)),
+                'calificaciones.update',
+                'Alumno',
+                null,
+                $oldValues ?: null,
+                $newValues ?: null
+            );
         }
 
         return response()->json([
@@ -571,6 +607,53 @@ class AlumnoCalificacionesController extends Controller
             'guardados' => count($items) - count($fallidos),
             'fallidos'  => $fallidos,
         ]);
+    }
+
+    /**
+     * Curso de la carga de una materia dentro del pedido, para poder titular la
+     * tarjeta. La planilla manda el curso en cada entrada; si la materia se creó
+     * recién y la entrada no trajo id, se toma el curso de la primera.
+     */
+    private function cursoDeEntradas(array $entradas, int $materiaId): string
+    {
+        $primero = '';
+        foreach ($entradas as $e) {
+            $curso = \App\Support\CourseLabel::label((int) ($e['anio'] ?? 0), $e['division'] ?? null);
+            if ($primero === '') $primero = $curso;
+            if ((int) ($e['materia_id'] ?? 0) === $materiaId) return $curso;
+        }
+
+        return $primero;
+    }
+
+    /**
+     * Título del historial para un guardado masivo: la planilla es de un curso y
+     * una materia, así que se nombran (decir solo "modificó calificaciones de 32
+     * alumnos" no dejaba saber de qué materia fue cada tarjeta).
+     */
+    private function tituloPlanilla(int $materiaId, array $cursos, int $alumnos): string
+    {
+        $materia = trim((string) Materia::where('id', $materiaId)->value('nombre'));
+        $curso = count($cursos) === 1 ? $cursos[0] : '';
+
+        $partes = array_values(array_filter([$curso, $materia], fn ($p) => $p !== ''));
+
+        if ($partes) return 'Guardó la planilla de ' . implode(' - ', $partes);
+
+        return 'Guardó calificaciones de ' . $alumnos . ' alumnos';
+    }
+
+    /**
+     * Recorta una colección de calificaciones a las materias dadas. Con la lista
+     * vacía no recorta nada: el payload viejo no manda materia_id y en ese caso
+     * es mejor mostrar todo antes que ocultar cambios.
+     */
+    private function soloMaterias($cals, array $materiaIds)
+    {
+        if ($materiaIds === []) return $cals;
+        return collect($cals)->filter(
+            fn ($c) => in_array((int) $c->materia_id, array_map('intval', $materiaIds), true)
+        )->values();
     }
 
     // Obtiene las calificaciones de todos los alumnos de un curso para una materia y ciclo lectivo especificos.
@@ -1032,14 +1115,33 @@ class AlumnoCalificacionesController extends Controller
         return array_map(fn ($v) => ['valor' => $v, 'descripcion' => $v], $vals);
     }
 
+    /**
+     * Fecha de la nota en AAAA-MM-DD. "15/03/2026" la leia como mes 15,
+     * strtotime devolvia false sin lanzar (por eso el try/catch nunca actuaba) y
+     * date() convertia ese false en 1970-01-01: la nota se guardaba y desaparecia
+     * de la planilla del ciclo, sin error en pantalla.
+     */
     private function normalizeFecha(?string $d): string
     {
-        if (!$d) return now()->toDateString();
-        try {
-            return date('Y-m-d', strtotime($d));
-        } catch (\Throwable $e) {
-            return now()->toDateString();
+        $d = trim((string) $d);
+        if ($d === '') return now()->toDateString();
+
+        // Dia primero, como se escribe en la escuela: dd/mm/aaaa (o con guion/punto).
+        if (preg_match('#^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})$#', $d, $m)) {
+            $dia  = (int) $m[1];
+            $mes  = (int) $m[2];
+            $anio = strlen($m[3]) === 2 ? 2000 + (int) $m[3] : (int) $m[3];
+            return checkdate($mes, $dia, $anio)
+                ? sprintf('%04d-%02d-%02d', $anio, $mes, $dia)
+                : now()->toDateString();
         }
+
+        $ts = strtotime($d);
+        if ($ts === false) return now()->toDateString();
+
+        $fecha = date('Y-m-d', $ts);
+        // Un siglo fuera del ciclo lectivo posible es lectura equivocada, no dato.
+        return ((int) substr($fecha, 0, 4) >= 2000) ? $fecha : now()->toDateString();
     }
 
     private function asDateYmd($raw): string
@@ -1123,7 +1225,10 @@ class AlumnoCalificacionesController extends Controller
                         'periodo'       => $p,
                     ],
                     [
-                        'promedio'    => round((float)$r->promedio, 2),
+                        // Si el cuatrimestre sólo tiene TEA/TEP/TED el AVG da NULL:
+                        // hay que guardar "sin promedio", no 0. Un 0 acá sería una
+                        // nota que nadie cargó.
+                        'promedio'    => $r->promedio === null ? null : round((float)$r->promedio, 2),
                         'notas_count' => (int)$r->notas_count,
                         'updated_at'  => now(),
                         'created_at'  => now(),
@@ -1175,6 +1280,7 @@ class AlumnoCalificacionesController extends Controller
         if (!$user) {
             abort(401, 'No autorizado. Iniciá sesión para ver la planilla.');
         }
+        $this->assertPuedeImprimir($req);
 
         $anio      = $req->integer('anio');
         $division  = strtoupper(trim((string) $req->query('division', '')));
@@ -1409,12 +1515,37 @@ class AlumnoCalificacionesController extends Controller
         ];
     }
 
+    /**
+     * Si esta cuenta puede editar la planilla del curso y materia. Son los tres
+     * filtros de siempre (acción del catálogo, alcance del rol y materias de la
+     * ficha) resueltos sin lanzar, para que la vista pueda abrirse en modo lectura.
+     */
+    private function puedeEditarPlanilla(Request $req, int $anio, ?string $division, int $materiaId): bool
+    {
+        if (!$this->userCanGrade($req)) return false;
+
+        $alcance = $this->alcanceEditar($req, 'calificaciones');
+        if ($alcance === \App\Support\Alcances::NADA) return false;
+        if ($alcance === \App\Support\Alcances::ASIGNADO && !$this->userIsAssignedTo($req, $anio, $division)) return false;
+
+        return $this->materiaDentroDeAsignaciones($req, $anio, $division, $materiaId);
+    }
+
     // Devuelve la vista Blade para imprimir la planilla de calificaciones de un curso+materia.
     // GET /calificaciones/planilla?anio=&division=&materia_id=&ciclo=
     // Requiere autenticación (middleware auth.token: Bearer o ?ticket=).
     public function printPlanilla(Request $req)
     {
         $datos = $this->prepararPlanilla($req);
+        // "editable" lo decide el servidor. Venía del parámetro de la url, así que
+        // cualquiera podía abrir la planilla imprimible con editable=1 y escribir
+        // notas aunque su rol tuviera la casilla desmarcada.
+        $editable = $this->puedeEditarPlanilla(
+            $req,
+            (int) $datos['anio'],
+            $datos['division'],
+            (int) $datos['materia']->id
+        );
         $frontend = rtrim(config('app.frontend_url', 'http://localhost:5173'), '/');
 
         // localhost y 127.0.0.1 son origenes distintos para el navegador: si el SPA
@@ -1439,7 +1570,7 @@ class AlumnoCalificacionesController extends Controller
                 'filas'    => $datos['filasFormulario'],
                 'resumen'  => $datos['resumen'],
                 'profesor' => $datos['profesor'],
-                'editable' => $req->boolean('editable', false),
+                'editable' => $editable,
                 'ventanaAbierta' => $datos['ventanaAbierta'],
                 'ventanaAlcance' => $datos['ventanaAlcance'],
                 'ventanaP1' => $datos['ventanaP1'],
@@ -1577,6 +1708,13 @@ class AlumnoCalificacionesController extends Controller
         $division = strtoupper(trim($data['division']));
         $materiaId = (int)$data['materia_id'];
         $ciclo    = (int)$data['ciclo'];
+
+        // La casilla "Cargar y corregir notas" del catálogo manda acá también. Sin
+        // esto, un rol al que dirección se la quitó seguía escribiendo notas desde
+        // la planilla imprimible, que es justamente la que usa el docente.
+        if (!$this->userCanGrade($req)) {
+            abort(403, 'No tenés permiso para cargar notas.');
+        }
 
         // Autorización por alcance: según el mapa de escritura del rol sobre calificaciones.
         $this->assertPuedeEditarCurso($req, $anio, $division, 'calificaciones');
@@ -1962,6 +2100,14 @@ class AlumnoCalificacionesController extends Controller
         $p2Vals = [];
         $p1Prelim = null;
         $p2Prelim = null;
+
+        // Orden fijo: sin él, el mismo contenido consultado en otro orden daba
+        // «7, 4» antes y «4, 7» después, y la tarjeta del historial mostraba un
+        // cambio que no existió. Las notas se reinsertan en el orden del
+        // formulario, así que el id reproduce el orden que el usuario escribió.
+        $cals = collect($cals)->sortBy(
+            fn ($c) => sprintf('%09d-%d-%09d', (int) $c->materia_id, (int) $c->periodo, (int) $c->id)
+        )->values();
 
         foreach ($cals as $c) {
             $tipo = $c->tipo_calificacion ?: 'regular';

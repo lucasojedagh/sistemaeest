@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use App\Support\ActivityLogger;
 use App\Support\AuthorizesScope;
+use App\Support\Texto;
 
 // Controlador para la promocion y reversal de alumnos entre anos lectivos.
 // Permite subir (promocionar) o bajar (revertir) a los alumnos un anio, gestionando egresos y altas.
@@ -84,7 +85,7 @@ class PromotionController extends Controller
             // Bajan de año los activos con anio > 1
             $promRows = DB::table('alumnos')
                 ->select('anio', 'division', DB::raw('COUNT(*) as cantidad'))
-                ->where('estado', '!=', 'Egresado')
+                ->whereNotIn('estado', Alumno::ESTADOS_BAJA)
                 ->where('anio', '>', 1)
                 ->groupBy('anio', 'division')
                 ->orderBy('anio')->orderBy('division')
@@ -111,7 +112,7 @@ class PromotionController extends Controller
             // Promocionan (1 → maxAnio-1)
             $promRows = DB::table('alumnos')
                 ->select('anio', 'division', DB::raw('COUNT(*) as cantidad'))
-                ->where('estado', '!=', 'Egresado')
+                ->whereNotIn('estado', Alumno::ESTADOS_BAJA)
                 ->where('anio', '<', $maxAnio)
                 ->groupBy('anio', 'division')
                 ->orderBy('anio')->orderBy('division')
@@ -120,7 +121,7 @@ class PromotionController extends Controller
             // Egresan los que están exactamente en el tope
             $egrRows = DB::table('alumnos')
                 ->select('anio', 'division', DB::raw('COUNT(*) as cantidad'))
-                ->where('estado', '!=', 'Egresado')
+                ->whereNotIn('estado', Alumno::ESTADOS_BAJA)
                 ->where('anio', $maxAnio)
                 ->groupBy('anio', 'division')
                 ->orderBy('anio')->orderBy('division')
@@ -353,7 +354,7 @@ class PromotionController extends Controller
                 // ====== REVERSIÓN ======
                 // a) Bajar 1 año a todos los activos con anio > 1
                 $res['promovidos'] = DB::table('alumnos')
-                    ->where('estado', '!=', 'Egresado')
+                    ->whereNotIn('estado', Alumno::ESTADOS_BAJA)
                     ->where('anio', '>', 1)
                     ->update([
                         'anio'       => DB::raw('anio - 1'),
@@ -389,7 +390,7 @@ class PromotionController extends Controller
                     ? 'Reversión aplicada correctamente.'
                     : 'No había cambios para aplicar (operación idempotente).';
 
-                ActivityLogger::log($request, 'Reversión (down): ' . $res['message'], 'promocion.down', null, null, null, $res);
+                ActivityLogger::log($request, 'Reversión de año: ' . $res['message'], 'promocion.down', null, null, null, $this->resumenParaHistorial($res));
                 return $res;
             }
 
@@ -400,7 +401,7 @@ class PromotionController extends Controller
             // a) Egresar a quienes estén EXACTAMENTE en el tope activo actual
             $aEgresar = DB::table('alumnos')
                 ->select('id', 'division')
-                ->where('estado', '!=', 'Egresado')
+                ->whereNotIn('estado', Alumno::ESTADOS_BAJA)
                 ->where('anio', $maxAnio)
                 ->get();
 
@@ -418,7 +419,7 @@ class PromotionController extends Controller
 
             // b) Subir 1 año a todos los que estén por debajo del tope
             $res['promovidos'] = DB::table('alumnos')
-                ->where('estado', '!=', 'Egresado')
+                ->whereNotIn('estado', Alumno::ESTADOS_BAJA)
                 ->whereBetween('anio', [1, $maxAnio - 1])
                 ->update([
                     'anio'       => DB::raw('anio + 1'),
@@ -427,7 +428,7 @@ class PromotionController extends Controller
 
             // c) Defensivo: si quedara alguien > maxAnio por inconsistencias previas
             $res['corregidos'] = DB::table('alumnos')
-                ->where('estado', '!=', 'Egresado')
+                ->whereNotIn('estado', Alumno::ESTADOS_BAJA)
                 ->where('anio', '>', $maxAnio)
                 ->update([
                     'anio'       => $maxAnio,
@@ -438,7 +439,7 @@ class PromotionController extends Controller
                 ? 'Promoción aplicada correctamente.'
                 : 'No había cambios para aplicar (operación idempotente).';
 
-            ActivityLogger::log($request, 'Promoción (up): ' . $res['message'], 'promocion.up', null, null, null, $res);
+            ActivityLogger::log($request, 'Promoción de año: ' . $res['message'], 'promocion.up', null, null, null, $this->resumenParaHistorial($res));
             return $res;
         });
 
@@ -455,12 +456,33 @@ class PromotionController extends Controller
 
     // ==== helpers ====
 
+    /**
+     * El resultado de la promoción en palabras para el historial. La respuesta
+     * que recibe el frontend mantiene sus claves técnicas; en la tarjeta tiene
+     * que leerse "Alumnos que subieron de año: 118", no "promovidos: 118".
+     */
+    private function resumenParaHistorial(array $res): array
+    {
+        $bajando = ($res['accion'] ?? 'up') === 'down';
+        $filas = [
+            $bajando ? 'Alumnos que bajaron de año' : 'Alumnos que subieron de año' => $res['promovidos'] ?? 0,
+            'Alumnos que egresaron' => $res['egresados'] ?? 0,
+            $bajando ? 'Egresados que volvieron' : 'Alumnos corregidos' => $res['corregidos'] ?? 0,
+            'Ciclo lectivo' => $res['anioLectivo'] ?? null,
+            'Año máximo'    => $res['maxAnio'] ?? null,
+        ];
+        return array_filter($filas, fn ($v) => $v !== null && $v !== 0 && $v !== '');
+    }
+
     /** Normaliza divisiones a 1..9 */
     private function normDivs(array $arr): array
     {
         $valid = ['1','2','3','4','5','6','7','8','9'];
         $out = array_values(array_unique(array_map(function ($d) {
-            return strtoupper(trim((string)$d));
+            // Una división puede venir como lista en un pedido armado fuera de
+            // la pantalla; leerla como texto sin guarda cortaba el preview de
+            // la promoción entero con "Array to string conversion".
+            return strtoupper(Texto::plano($d));
         }, $arr)));
         return array_values(array_filter($out, fn($d) => in_array($d, $valid, true)));
     }

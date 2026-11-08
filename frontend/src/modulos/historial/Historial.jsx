@@ -10,20 +10,44 @@ import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   Search, Filter, FileText, User as UserIcon, GraduationCap, BookOpen, CalendarClock,
   Layers, Users, Clock, Inbox, RefreshCw, ClipboardCheck, BookMarked, Award, Lock, Database,
+  Trash2,
 } from "lucide-react";
 import useAviso from "../../compartido/componentes/modals/useAviso";
+import usePasswordPrompt from "../../compartido/componentes/modals/usePasswordPrompt";
 import Breadcrumbs from "../../compartido/componentes/Common/Breadcrumbs";
 import ExportButton from "../../compartido/componentes/Common/ExportButton";
+import FichaLayout, { card, field, valBig, chipBlue } from "../../compartido/componentes/Common/FichaLayout";
+import { cursoLabel } from "../../compartido/lib/cursos";
+import { iniciales } from "../../compartido/lib/iniciales";
 import { useAuth } from "../auth/AuthContext";
-import { puede } from "../../compartido/lib/permisos";
 import { getCached, setCache } from "../../compartido/lib/pageCache";
-import { apiGet, apiPost } from "../../compartido/lib/api";
+import { apiGet, apiPost, apiDelete, apiBlob } from "../../compartido/lib/api";
+import { descargarBlob, mensajeDescarga } from "../../compartido/lib/descarga";
+import { mensajeAmable } from "../../compartido/lib/errores";
 import { formatearFecha } from "../../compartido/lib/fechas";
 import useAvisoDeCambios from "../../compartido/hooks/useAvisoDeCambios";
+import { accionHabilitada } from "../../compartido/lib/permisos";
 import "./Historial.css";
 
 const CACHE_KEY = "historial";
 const PER_PAGE = 50;
+
+// Una acción larga nace contraída: dos renglones de título, unos pocos cambios y
+// el resto detrás de "Ver más". Sin umbral, una planilla de notas de un curso
+// entero ocupa media pantalla.
+const MAX_TITULO = 110;
+const MAX_MOTIVO = 90;
+const MAX_CAMBIOS = 6;
+
+// Chips de cursos que muestra la ficha antes de ofrecer la lista completa.
+const CHIPS_EN_FICHA = 12;
+
+// Nombre de archivo con la fecha que usa la escuela: 07-11-2026.
+const hoyArchivo = () => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`;
+};
 
 const ICON_MAP = {
   doc: FileText, user: UserIcon, alumno: GraduationCap, profesor: Users,
@@ -64,27 +88,59 @@ const CATEGORIAS = [
   { key: "curso", label: "Cursos" },
   { key: "documento", label: "Documentos" },
   { key: "promocion", label: "Promociones" },
+  { key: "ciclo", label: "Ciclo lectivo" },
+  { key: "role", label: "Roles y permisos" },
   { key: "ventana", label: "Ventana de notas" },
   { key: "backup", label: "Copias de seguridad" },
+  { key: "historial", label: "Historial del sistema" },
 ];
 
 // La clave es el ULTIMO tramo del action_type: el backend filtra con "termina en".
+// Esta lista tiene que cubrir todas las operaciones que HistorialController.php
+// etiqueta; si falta una, sus tarjetas no se pueden filtrar aunque existan.
+// El texto coincide con el de la etiqueta de la tarjeta, en singular.
 const OPERACIONES = [
   { key: "", label: "Todas las acciones" },
-  { key: "store", label: "Creaciones" },
-  { key: "update", label: "Ediciones" },
-  { key: "destroy", label: "Eliminaciones" },
-  { key: "login", label: "Inicios de sesión" },
-  { key: "download", label: "Descargas" },
-  { key: "print", label: "Impresiones" },
-  { key: "register", label: "Registros públicos" },
-  { key: "egresar", label: "Egresos" },
-  { key: "justificar", label: "Justificaciones" },
-  { key: "replace", label: "Reemplazos" },
-  { key: "sync", label: "Sincronizaciones" },
-  { key: "avatar", label: "Fotos de perfil" },
-  { key: "restore", label: "Restauraciones" },
-  { key: "cerrar", label: "Cierres" },
+  { key: "store", label: "Creación" },
+  { key: "storeFromUsers", label: "Creación desde usuarios" },
+  { key: "update", label: "Edición" },
+  { key: "destroy", label: "Eliminación" },
+  { key: "forceDelete", label: "Eliminación definitiva" },
+  { key: "restore", label: "Restauración" },
+  { key: "import", label: "Importación" },
+  { key: "replace", label: "Reemplazo" },
+  { key: "sync", label: "Sincronización" },
+  { key: "assignments", label: "Asignaciones" },
+  { key: "avatar", label: "Foto de perfil" },
+  { key: "profile", label: "Edición de Mi cuenta" },
+  { key: "role", label: "Cambio de rol" },
+  { key: "horario", label: "Ajuste de horario" },
+  { key: "password_reset", label: "Cambio de contraseña" },
+  { key: "password_link", label: "Solicitud de recuperación" },
+  { key: "clave_temporal", label: "Clave temporal" },
+  { key: "login", label: "Inicio de sesión" },
+  { key: "logout", label: "Cierre de sesión" },
+  { key: "sesiones", label: "Cierre de sesiones" },
+  { key: "register", label: "Registro público" },
+  { key: "aprobar", label: "Aprobación de cuenta" },
+  { key: "rechazar", label: "Rechazo de cuenta" },
+  { key: "egresar", label: "Egreso" },
+  { key: "inactivar", label: "Baja por abandono" },
+  { key: "justificar", label: "Justificación" },
+  { key: "aprobada", label: "Justificación aprobada" },
+  { key: "rechazada", label: "Justificación rechazada" },
+  { key: "pendiente", label: "Justificación pendiente" },
+  { key: "promote", label: "Promoción del ciclo" },
+  { key: "up", label: "Promoción" },
+  { key: "down", label: "Reversión" },
+  { key: "enable_years", label: "Apertura de años" },
+  { key: "cerrar", label: "Cierre de la ventana" },
+  { key: "download", label: "Descarga" },
+  { key: "print", label: "Impresión" },
+  { key: "download_sql", label: "Descarga de copia" },
+  { key: "import_sql", label: "Importación de copia" },
+  { key: "error", label: "Error" },
+  { key: "vaciar", label: "Vaciado del historial" },
 ];
 
 // Devuelve la fecha de HOY en formato local YYYY-MM-DD (no hardcodeada), en la
@@ -132,6 +188,84 @@ function leerCache() {
   return guardado.logs ? guardado : null;
 }
 
+// El backend manda cada curso como "anio|division" para que la lista pese poco
+// (se repite en cada tarjeta del mismo autor). Aquí se vuelve a su forma para
+// pasarla por cursoLabel, que es el que sabe escribirla como "1.º 3.ª".
+function parseCursoCorto(c) {
+  const [anio, division] = String(c || "").split("|");
+  return { anio: Number(anio) || null, division: division || null };
+}
+
+// Ficha de quien aparece en una tarjeta del historial: foto, nombre, rol, correo
+// y los cursos en los que trabaja. Los cursos ya venían en la tarjeta de cada
+// movimiento, así que abrir la ficha no agrega ningún permiso nuevo.
+function FichaPersona({ persona, onClose }) {
+  const [verTodos, setVerTodos] = useState(false);
+  // Al pasar de una persona a otra la lista vuelve a nacer contraída.
+  useEffect(() => {
+    setVerTodos(false);
+  }, [persona?.user_id]);
+
+  const cursos = persona?.cursos || [];
+  const total = persona?.cursos_total || cursos.length;
+  const visibles = verTodos ? cursos : cursos.slice(0, CHIPS_EN_FICHA);
+
+  return (
+    <FichaLayout
+      open={!!persona}
+      onClose={onClose}
+      titulo={persona?.nombre || "Ficha de la persona"}
+      subtitulo={persona?.email || ""}
+      avatarId={persona?.user_id}
+      avatarVersion={persona?.avatar_version}
+      avatarFallback={iniciales(persona?.nombre, persona?.apellido)}
+    >
+      <div className={card}>
+        <div className="ficha-grid">
+          <div className="ficha-col">
+            <span className={field}>Rol</span>
+            <span className={valBig}>{persona?.rol || "—"}</span>
+          </div>
+          <div className="ficha-col">
+            <span className={field}>Correo electrónico</span>
+            <span className={`${valBig} ficha-break`}>{persona?.email || "—"}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className={card}>
+        <div className="ficha-sec-head">
+          <span className="ficha-sec-title ficha-sec-title-blue">Cursos asignados</span>
+          {total > 0 && <span className="ficha-sec-count">{total}</span>}
+        </div>
+        {cursos.length ? (
+          <>
+            <div className="ficha-chips-wrap">
+              {visibles.map((c, i) => {
+                const curso = parseCursoCorto(c);
+                const etiqueta =
+                  cursoLabel(curso) || `${curso.anio}° ${curso.division || "(todas)"}`;
+                return (
+                  <span key={i} className={chipBlue} title={etiqueta}>
+                    {etiqueta}
+                  </span>
+                );
+              })}
+            </div>
+            {cursos.length > CHIPS_EN_FICHA && (
+              <button type="button" className="hist-btn-ver" onClick={() => setVerTodos((v) => !v)}>
+                {verTodos ? "Ocultar cursos" : `Ver los ${cursos.length} cursos`}
+              </button>
+            )}
+          </>
+        ) : (
+          <div className="ficha-empty">Sin cursos asignados</div>
+        )}
+      </div>
+    </FichaLayout>
+  );
+}
+
 export default function Historial() {
   const { user } = useAuth();
   // Ultima carga sin filtros, que se muestra de inmediato al abrir la pestaña.
@@ -144,11 +278,21 @@ export default function Historial() {
   const [cargando, setCargando] = useState(false);
   const [cargandoMas, setCargandoMas] = useState(false);
   const [refrescando, setRefrescando] = useState(false);
+  const [limpiando, setLimpiando] = useState(false);
+  const [exportando, setExportando] = useState(false);
   const [avisoError, setAvisoError] = useState("");
   const [cargandoInicial, setCargandoInicial] = useState(!logs.length);
   const primeraVez = useRef((copia?.logs?.length ?? 0) === 0);
   const peticionActual = useRef(null);
-  const [mostrarAviso, , avisoModal] = useAviso();
+  const [mostrarAviso, pedirConfirmacion, avisoModal] = useAviso();
+  const [confirmarContrasena, modalPwd] = usePasswordPrompt();
+
+  // Ficha de la persona que hizo el movimiento (se abre al pulsar su nombre).
+  const [persona, setPersona] = useState(null);
+
+  // Tarjetas largas abiertas por el "Ver más". Por id de movimiento: al cargar la
+  // página siguiente no se pisotean las que el usuario ya extendió.
+  const [abiertas, setAbiertas] = useState({});
 
   // Filtros: se envian al backend, que consulta el historial completo.
   const [search, setSearch] = useState("");
@@ -240,7 +384,7 @@ export default function Historial() {
       }
     } catch (e) {
       if (e?.name === "AbortError") return;
-      setAvisoError(e?.message || "No se pudo cargar el historial.");
+      setAvisoError(mensajeAmable(e, "No se pudo cargar el historial."));
       if (primeraVez.current && logs.length === 0) {
         mostrarAviso({ icon: "error", title: "Error", text: "No se pudo cargar el historial." });
       } else if (forzar) {
@@ -270,6 +414,49 @@ export default function Historial() {
   const refrescar = () => traer({ pagina: 1, forzar: true });
   const cargarMas = () => traer({ pagina: pagina + 1, anexar: true });
 
+  // Exportar y limpiar el historial son exclusivos de la cuenta Admin: el catálogo
+  // nunca presta esas dos claves a otro rol (SOLO_ADMIN), así que la casilla coincide
+  // con el rango. En "limpiar" el backend además exige role:admin y la contraseña.
+  const puedeExportar = accionHabilitada(user, 'historial.exportar', user?.role === 'admin');
+  const puedeLimpiar = accionHabilitada(user, 'historial.limpiar', user?.role === 'admin');
+
+  const limpiarHistorial = async () => {
+    const ok = await pedirConfirmacion({
+      title: "¿Limpiar todo el historial?",
+      text: "Se borra el historial completo de actividad del sistema, no solo lo que estás viendo.\n\nAntes de borrar queda una copia .sql en la carpeta de respaldos del servidor, así que la información no se pierde.\n\nDel vaciamiento queda una tarjeta en el historial (quién lo limpió, cuántos registros y el nombre de la copia).\n\nDespués vas a tener que confirmar tu contraseña.",
+      confirmText: "Sí, limpiar",
+      cancelText: "Cancelar",
+      danger: true,
+    });
+    if (!ok) return;
+
+    // Igual que restaurar un respaldo: la confirmación de contraseña se pide acá y
+    // el backend la verifica (5 minutos de margen) antes de borrar.
+    if (!(await confirmarContrasena())) return;
+
+    setLimpiando(true);
+    try {
+      const r = await apiDelete("/historial");
+      mostrarAviso({
+        icon: "success",
+        title: r?.borrados ? "Historial limpio" : "El historial ya estaba vacío",
+        text: r?.respaldo
+          ? `Se borraron ${r.borrados} ${r.borrados === 1 ? "registro" : "registros"}. Copia guardada como ${r.respaldo}.`
+          : "No había registros para borrar.",
+        ms: 3400,
+      });
+      refrescar();
+    } catch (e) {
+      mostrarAviso({
+        icon: "error",
+        title: "No se pudo limpiar el historial",
+        text: mensajeAmable(e, "El servidor no respondió. No se borró nada."),
+      });
+    } finally {
+      setLimpiando(false);
+    }
+  };
+
   // Como en el resto de las pantallas: la lista se recarga sola cuando llega
   // actividad nueva de otro usuario.
   useAvisoDeCambios(
@@ -280,20 +467,34 @@ export default function Historial() {
 
   // Filas planas y en espanol: el resumen de cambios llega como lista de objetos
   // y el CSV la escribia como "[object Object]".
-  const filasExport = useMemo(
-    () => logs.map((l) => ({
-      Fecha: l.fecha_legible || "",
-      Área: l.categoria || "",
-      Operación: l.operacion || "",
-      Acción: l.titulo || "",
-      Actor: l.actor || "",
-      Rol: l.actor_role_legible || "",
-      Entidad: l.entidad || "",
-      Cambios: (l.resumen || []).map((r) => r.texto).join(" | "),
-      Motivo: l.detalles || "",
-    })),
-    [logs]
-  );
+  const exportarHistorial = async (formato) => {
+    if (exportando) return;
+    // Los mismos filtros de la pantalla, pero sin página: el archivo lo arma el
+    // servidor sobre TODO el historial filtrado, así coincide con el contador de
+    // la cabecera en vez de bajar sólo lo que ya se había cargado.
+    const qs = new URLSearchParams({ format: formato });
+    if (categoria) qs.set("categoria", categoria);
+    if (operacion) qs.set("operacion", operacion);
+    if (debouncedSearch) qs.set("search", debouncedSearch);
+    if (desde) qs.set("desde", desde);
+    if (hasta) qs.set("hasta", hasta);
+
+    setExportando(true);
+    try {
+      const blob = await apiBlob(`/historial/export?${qs.toString()}`);
+      const nombre = `historial_${hoyArchivo()}.${formato === "json" ? "json" : "csv"}`;
+      descargarBlob(blob, nombre);
+      mostrarAviso({ icon: "success", title: "Descarga lista", text: mensajeDescarga(nombre), ms: 3400 });
+    } catch (e) {
+      mostrarAviso({
+        icon: "error",
+        title: "No se pudo descargar el historial",
+        text: mensajeAmable(e, "El servidor no respondió. Revisá la conexión e intentá de nuevo."),
+      });
+    } finally {
+      setExportando(false);
+    }
+  };
 
   const puedenCargarMas = pagina < ultima;
 
@@ -321,10 +522,21 @@ export default function Historial() {
               <RefreshCw size={16} className={refrescando || cargando ? "hist-spin" : ""} />
               {refrescando ? "Refrescando…" : "Refrescar"}
             </button>
-            {/* El archivo lo arma el navegador, así que no hay ruta que frenar:
-                la casilla "Exportar el historial" se cumple acá. */}
-            {puede(user, "historial.exportar") && (
-              <ExportButton data={filasExport} filename="historial" label="Exportar" />
+            {/* La descarga la arma el servidor con los mismos filtros de la
+                pantalla, así que el archivo trae el historial completo y no sólo
+                la página visible. */}
+            {puedeExportar && (
+              <ExportButton onExport={exportarHistorial} filename="historial" label={exportando ? "Descargando…" : "Exportar"} />
+            )}
+            {puedeLimpiar && (
+              <button
+                onClick={limpiarHistorial}
+                disabled={limpiando}
+                className="hist-btn-refresh hist-btn-limpiar"
+              >
+                <Trash2 size={16} className={limpiando ? "hist-spin" : ""} />
+                {limpiando ? "Limpiando…" : "Limpiar historial"}
+              </button>
             )}
           </div>
         </div>
@@ -407,7 +619,7 @@ export default function Historial() {
         </div>
 
         {avisoError && !cargando && (
-          <p className="hist-alerta" role="status">
+          <p className="hist-alerta" role="alert">
             {avisoError}
             <button onClick={refrescar} className="hist-alerta-reintento">Reintentar</button>
           </p>
@@ -416,12 +628,14 @@ export default function Historial() {
         {cargandoInicial ? (
           <div className="hist-loading">Cargando datos…</div>
         ) : logs.length === 0 ? (
+          avisoError ? null : (
           <div className="hist-empty">
             <div className="hist-empty-inner">
               <Inbox size={42} className="hist-empty-icon" />
               <p className="hist-empty-text">{hayFiltros ? "No se encontraron registros con esos filtros." : "Aún no hay actividad registrada."}</p>
             </div>
           </div>
+          )
         ) : (
           <>
           <div className="hist-timeline">
@@ -430,6 +644,13 @@ export default function Historial() {
               {logs.map((log, i) => {
                 const style = COLOR_STYLES[log.color] || COLOR_STYLES.slate;
                 const Icon = ICON_MAP[log.icono] || Clock;
+                const cambios = log.resumen || [];
+                const tituloLargo = (log.titulo || "").length > MAX_TITULO;
+                const motivoLargo = (log.detalles || "").length > MAX_MOTIVO;
+                const muchosCambios = cambios.length > MAX_CAMBIOS;
+                const esLarga = tituloLargo || motivoLargo || muchosCambios;
+                const abierta = !!abiertas[log.id];
+                const visibles = muchosCambios && !abierta ? cambios.slice(0, MAX_CAMBIOS) : cambios;
                 return (
                   <div
                     key={log.id}
@@ -453,7 +674,7 @@ export default function Historial() {
                               <span className="hist-badge-muted">{log.entidad}</span>
                             )}
                           </div>
-                          <h3 className="hist-card-title">
+                          <h3 className={`hist-card-title${tituloLargo && !abierta ? " hist-clamp" : ""}`}>
                             {log.titulo}
                           </h3>
                         </div>
@@ -463,9 +684,9 @@ export default function Historial() {
                         </div>
                       </div>
 
-                      {log.resumen && log.resumen.length > 0 && (
+                      {cambios.length > 0 && (
                         <div className="hist-resumen">
-                          {log.resumen.map((r, idx) => {
+                          {visibles.map((r, idx) => {
                             if (r.tipo === 'student') {
                               return (
                                 <div key={idx} className="hist-resumen-student">
@@ -484,13 +705,47 @@ export default function Historial() {
                         </div>
                       )}
 
+                      {esLarga && (
+                        <button
+                          type="button"
+                          className="hist-btn-ver"
+                          onClick={() => setAbiertas((a) => ({ ...a, [log.id]: !a[log.id] }))}
+                        >
+                          {abierta ? "Ver menos" : muchosCambios ? `Ver los ${cambios.length} cambios` : "Ver todo"}
+                        </button>
+                      )}
+
                       <div className="hist-card-foot">
                         <span className="hist-actor">
-                          <span className="hist-actor-name">{log.actor}</span>
+                          {log.actor_user_id ? (
+                            <button
+                              type="button"
+                              className="hist-actor-btn"
+                              title={`Ver la ficha de ${log.actor}`}
+                              onClick={() =>
+                                setPersona({
+                                  user_id: log.actor_user_id,
+                                  avatar_version: log.actor_avatar_version,
+                                  nombre: log.actor,
+                                  apellido: log.actor_apellido || "",
+                                  rol: log.actor_role_legible || log.actor_role || "",
+                                  email: log.actor_email || "",
+                                  cursos: log.actor_cursos || [],
+                                  cursos_total: log.actor_cursos_total || 0,
+                                })
+                              }
+                            >
+                              {log.actor}
+                            </button>
+                          ) : (
+                            <span className="hist-actor-name">{log.actor}</span>
+                          )}
                             <span className="hist-actor-role">({log.actor_role_legible || log.actor_role})</span>
                         </span>
                         {log.detalles ? (
-                          <span className="hist-motivo">Motivo: {log.detalles}</span>
+                          <span className={`hist-motivo${motivoLargo && !abierta ? " hist-clamp" : ""}`}>
+                            Motivo: {log.detalles}
+                          </span>
                         ) : null}
                       </div>
                     </div>
@@ -513,6 +768,8 @@ export default function Historial() {
         )}
       </div>
       {avisoModal}
+      {modalPwd}
+      <FichaPersona persona={persona} onClose={() => setPersona(null)} />
     </div>
   );
 }

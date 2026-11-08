@@ -120,6 +120,12 @@
   color: var(--emerald-800);
 }
 
+/* Inactivo (abandonó): mismo trato que el egresado, en gris. */
+.ficha-alumno-chip-inactivo {
+  background-color: var(--slate-100);
+  color: var(--slate-600);
+}
+
 .ficha-alumno-chip-activo {
   background-color: var(--blue-100);
   color: var(--blue-800);

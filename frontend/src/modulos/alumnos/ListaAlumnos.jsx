@@ -4,7 +4,10 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { BookOpen, Eye, CalendarClock, UserCircle, Pencil, UserPlus, SearchX } from 'lucide-react';
 import { cursoLabel, parseCurso, especialidadLabel } from '../../compartido/lib/cursos';
+import { estaFueraDeCursada } from '../../compartido/lib/estadosAlumno';
+import { iniciales } from '../../compartido/lib/iniciales';
 import EmptyState from '../../compartido/componentes/Common/EmptyState';
+import ErrorState from '../../compartido/componentes/Common/ErrorState';
 import "./ListaAlumnos.css";
 
 /*
@@ -20,7 +23,7 @@ import "./ListaAlumnos.css";
  * La paginación se maneja en Alumnos.jsx; acá solo se renderiza el slice recibido.
  */
 
-const ListaAlumnos = ({ alumnos = [], onMostrarDetalle, onVerFicha, onOpenCronograma, puedeEditarAlumno, cursoTexto, hayBusqueda, onLimpiarBusqueda, onAgregarAlumno }) => {
+const ListaAlumnos = ({ alumnos = [], onMostrarDetalle, onVerFicha, onOpenCronograma, puedeEditarAlumno, cursoTexto, hayBusqueda, onLimpiarBusqueda, onAgregarAlumno, errorCarga, onReintentar }) => {
   const containerRef = useRef(null);
 
   const total = Array.isArray(alumnos) ? alumnos.length : 0;
@@ -74,20 +77,18 @@ const ListaAlumnos = ({ alumnos = [], onMostrarDetalle, onVerFicha, onOpenCronog
     return '';
   };
 
-  const Avatar = ({ alumno, chipBg, iconColor, isEgresado }) => {
-    const n = String(alumno.nombre || '').trim();
-    const a = String(alumno.apellido || '').trim();
-    const iniciales = `${n[0] || ''}${a[0] || ''}`.toUpperCase();
+  const Avatar = ({ alumno, chipBg, iconColor, esBaja, claseBaja }) => {
+    const inicialesLetras = iniciales(alumno?.nombre, alumno?.apellido);
     return (
-      <div className={`lista-alumnos-avatar-wrap ${isEgresado ? 'lista-alumnos-avatar-wrap-egresado' : ''}`}>
+      <div className={`lista-alumnos-avatar-wrap ${esBaja ? `lista-alumnos-avatar-wrap-${claseBaja}` : ''}`}>
         <div className={`lista-alumnos-avatar-inner ${chipBg}`}>
           <BookOpen size={20} className={iconColor} />
         </div>
         <span className="lista-alumnos-avatar-initials">
-          {iniciales || '—'}
+          {inicialesLetras || '—'}
         </span>
-        {isEgresado && (
-          <span className="lista-alumnos-avatar-dot" title="Egresado" aria-hidden="true" />
+        {esBaja && (
+          <span className={`lista-alumnos-avatar-dot lista-alumnos-avatar-dot-${claseBaja}`} title={alumno.estado} aria-hidden="true" />
         )}
       </div>
     );
@@ -146,14 +147,17 @@ const ListaAlumnos = ({ alumnos = [], onMostrarDetalle, onVerFicha, onOpenCronog
             <tbody className="lista-alumnos-tbody">
               {visibleAlumnos.map((alumno, idx) => {
                 const isLast = idx === visibleAlumnos.length - 1;
-                const esEgresado =
-                  String(alumno?.estado || '').toLowerCase() === 'egresado' || Boolean(alumno?.egreso_year);
+                // Egresado e Inactivo (abandono) están fuera de la cursada: la
+                // fila se pinta igual, solo cambia el color del rótulo.
+                const estadoBaja = String(alumno?.estado || '').toLowerCase();
+                const claseBaja = estadoBaja === 'inactivo' ? 'inactivo' : 'egresado';
+                const esBaja = estaFueraDeCursada(alumno) || Boolean(alumno?.egreso_year);
 
                 const estadoChips = (
                   <div className="lista-alumnos-estado-chips">
-                    {String(alumno.estado).toLowerCase() === 'egresado' && (
-                      <span className="lista-alumnos-chip lista-alumnos-chip-egresado">
-                        Egresado
+                    {(estadoBaja === 'egresado' || estadoBaja === 'inactivo') && (
+                      <span className={`lista-alumnos-chip lista-alumnos-chip-${claseBaja}`}>
+                        {alumno.estado}
                         {alumno.egreso_anio ? ` ${cursoLabel({ anio: alumno.egreso_anio, division: alumno.egreso_division || null })}` : ''}
                         {alumno.egreso_year ? ` · ${alumno.egreso_year}` : ''}
                       </span>
@@ -213,7 +217,7 @@ const ListaAlumnos = ({ alumnos = [], onMostrarDetalle, onVerFicha, onOpenCronog
                   >
                     <td className="lista-alumnos-cell-main">
                       <div className="lista-alumnos-avatar-row">
-                        <Avatar alumno={alumno} chipBg={chipBg} iconColor={iconColor} isEgresado={esEgresado} />
+                        <Avatar alumno={alumno} chipBg={chipBg} iconColor={iconColor} esBaja={esBaja} claseBaja={claseBaja} />
                         <div className="lista-alumnos-info">
                           <div className="lista-alumnos-name-row">
                             <div className="lista-alumnos-name-label">
@@ -261,12 +265,12 @@ const ListaAlumnos = ({ alumnos = [], onMostrarDetalle, onVerFicha, onOpenCronog
                                 onClick={(e) => toggleCourse(e, alumno.id, isLast)}
                                 onKeyDown={(e) => onCourseKeyDown(e, alumno.id, isLast)}
                                 title="Ver curso en grande" aria-expanded={courseFocusId === alumno.id}
-                                className={`lista-alumnos-curso-trigger ${esEgresado ? 'lista-alumnos-curso-trigger-egresado' : 'lista-alumnos-curso-trigger-activo'}`}
+                                className={`lista-alumnos-curso-trigger ${esBaja ? 'lista-alumnos-curso-trigger-baja' : 'lista-alumnos-curso-trigger-activo'}`}
                               >
-                                <span className={`lista-alumnos-curso-chip ${esEgresado ? 'lista-alumnos-curso-chip-egresado' : 'lista-alumnos-curso-chip-activo'}`}>
-                                  {esEgresado ? 'Últ. curso' : 'Curso'}
+                                <span className={`lista-alumnos-curso-chip ${esBaja ? 'lista-alumnos-curso-chip-baja' : 'lista-alumnos-curso-chip-activo'}`}>
+                                  {esBaja ? 'Últ. curso' : 'Curso'}
                                 </span>
-                                <span className={`lista-alumnos-curso-value ${esEgresado ? 'lista-alumnos-curso-value-egresado' : 'lista-alumnos-curso-value-activo'}`}>
+                                <span className={`lista-alumnos-curso-value ${esBaja ? 'lista-alumnos-curso-value-baja' : 'lista-alumnos-curso-value-activo'}`}>
                                   {formatearCurso(cursoMostrar)}
                                 </span>
                               </div>
@@ -316,11 +320,11 @@ const ListaAlumnos = ({ alumnos = [], onMostrarDetalle, onVerFicha, onOpenCronog
                           const puedeEditar = !puedeEditarAlumno || puedeEditarAlumno(alumno);
                           return (
                             <button
-                              onClick={() => !esEgresado && onOpenCronograma(alumno)}
-                              className={`lista-alumnos-btn-horario ${esEgresado ? 'lista-alumnos-btn-horario-egresado' : 'lista-alumnos-btn-horario-activo'}`}
-                              title={esEgresado ? 'Alumno egresado (no tiene horario activo)' : (puedeEditar ? 'Ver cronograma' : 'Ver cronograma (solo lectura: no podés editar este curso)')}
+                              onClick={() => !esBaja && onOpenCronograma(alumno)}
+                              className={`lista-alumnos-btn-horario ${esBaja ? 'lista-alumnos-btn-horario-baja' : 'lista-alumnos-btn-horario-activo'}`}
+                              title={esBaja ? `${alumno.estado} (no tiene horario activo)` : (puedeEditar ? 'Ver cronograma' : 'Ver cronograma (solo lectura: no podés editar este curso)')}
                               aria-label={`Ver cronograma de ${alumno?.nombre || 'alumno'}`}
-                              disabled={esEgresado}
+                              disabled={esBaja}
                             >
                               <CalendarClock size={20} />
                             </button>
@@ -342,8 +346,17 @@ const ListaAlumnos = ({ alumnos = [], onMostrarDetalle, onVerFicha, onOpenCronog
                 );
               })}
 
-              {/* Estado vacío que enseña: explica por qué no hay nada y qué hacer */}
-              {total === 0 && (
+              {/* Estado vacío que enseña: explica por qué no hay nada y qué hacer.
+                  Si lo que falló fue el pedido, no se habla de "falta de datos":
+                  va el aviso del fallo con su botón Reintentar. */}
+              {total === 0 && errorCarga && (
+                <tr>
+                  <td colSpan={3} className="lista-alumnos-empty">
+                    <ErrorState mensaje={errorCarga} onReintentar={onReintentar} compact />
+                  </td>
+                </tr>
+              )}
+              {total === 0 && !errorCarga && (
                 <tr>
                   <td colSpan={3} className="lista-alumnos-empty">
                     <EmptyState

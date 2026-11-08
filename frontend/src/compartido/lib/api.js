@@ -8,6 +8,7 @@
 import { authHeaders, handleUnauthorized } from "./authToken";
 import { clearCache, clearPrefijo } from "./pageCache";
 import { marcarCambioPropio } from "./dataStamp";
+import { mensajeDeEstado } from "./errores";
 
 // Qué copias guardar hay que tirar cuando una escritura tiene éxito, y qué
 // grupos de datos tocó (para que el refresco automático no recargue por un
@@ -154,6 +155,19 @@ function normOpts(opts) {
   return opts instanceof AbortSignal ? { signal: opts } : opts;
 }
 
+// Error final para la pantalla. Primero lo que dijo la API; si no trajo texto
+// (nginx corta las subidas grandes con un 413 HTML, o Laravel responde el 413
+// con el message vacío), se traduce el estado HTTP; si nada de eso aplica, el
+// texto propio de la operación. Nunca método, URL ni código: el usuario lee el
+// motivo y qué hacer.
+function errorDeResuesta(res, data, defecto) {
+  const texto = (data && data.message) || mensajeDeEstado(res.status) || defecto;
+  const err = new Error(texto);
+  err.status = res.status;
+  err.data = data;
+  return err;
+}
+
 async function apiRequest(method, path, body, opts) {
   const { signal } = normOpts(opts);
   const url = apiUrl(path);
@@ -178,13 +192,11 @@ async function apiRequest(method, path, body, opts) {
   }
 
   if (!res.ok) {
-    // Mensaje en criollo: nunca mostrar método/URL/códigos al usuario final.
-    const err = new Error(
-      (data && data.message) || "No se pudo completar la acción. Revisá tu conexión e intentá de nuevo."
+    throw errorDeResuesta(
+      res,
+      data,
+      "No se pudo completar la acción. Revisá tu conexión e intentá de nuevo."
     );
-    err.status = res.status;
-    err.data = data;
-    throw err;
   }
 
   // Escritura exitosa: se invalidan las copias guardadas relacionadas para
@@ -233,11 +245,7 @@ export async function apiUpload(path, formData, opts) {
     handleUnauthorized();
   }
   if (!res.ok) {
-    // Mensaje en criollo: nunca mostrar método/URL/códigos al usuario final.
-    const err = new Error((data && data.message) || "No se pudo subir el archivo. Revisá tu conexión e intentá de nuevo.");
-    err.status = res.status;
-    err.data = data;
-    throw err;
+    throw errorDeResuesta(res, data, "No se pudo subir el archivo. Revisá tu conexión e intentá de nuevo.");
   }
   invalidarTrasEscritura(path);
   return data ?? {};
@@ -253,12 +261,7 @@ export async function apiBlob(path, opts) {
     handleUnauthorized();
   }
   if (!res.ok) {
-    const data = await readSafely(res);
-    // Mensaje en criollo: nunca mostrar método/URL/códigos al usuario final.
-    const err = new Error((data && data.message) || "No se pudo descargar el archivo. Revisá tu conexión e intentá de nuevo.");
-    err.status = res.status;
-    err.data = data;
-    throw err;
+    throw errorDeResuesta(res, await readSafely(res), "No se pudo descargar el archivo. Revisá tu conexión e intentá de nuevo.");
   }
   return res.blob();
 }
@@ -280,11 +283,7 @@ export async function apiUploadBlob(path, formData) {
     handleUnauthorized();
   }
   if (!res.ok) {
-    const data = await readSafely(res);
-    const err = new Error((data && data.message) || "No se pudo generar el archivo. Revisá tu conexión e intentá de nuevo.");
-    err.status = res.status;
-    err.data = data;
-    throw err;
+    throw errorDeResuesta(res, await readSafely(res), "No se pudo generar el archivo. Revisá tu conexión e intentá de nuevo.");
   }
   return res.blob();
 }

@@ -5,6 +5,7 @@ namespace App\Dominios\Calificaciones;
 use App\Http\Controllers\Controller;
 
 use App\Dominios\Calificaciones\VentanaNotaFinal;
+use App\Support\ActivityLogger;
 use App\Support\Permisos;
 use App\Support\RoleHierarchy;
 use Illuminate\Http\Request;
@@ -57,6 +58,7 @@ class VentanaNotaFinalController extends Controller
         }
 
         // Semantica de fila unica: se reemplaza la configuracion previa.
+        $previa = VentanaNotaFinal::actual();
         VentanaNotaFinal::query()->delete();
         $v = VentanaNotaFinal::create([
             'fecha_inicio'  => $inicio,
@@ -65,6 +67,26 @@ class VentanaNotaFinalController extends Controller
             'alcance'       => $d['alcance'] ?? 'ambos',
             'created_by'    => $req->user()->id,
         ]);
+
+        // Configurar la ventana habilita o bloquea la carga de notas de todo el
+        // colegio: sin esta línea el historial no mostraba quién lo hizo.
+        $alcances = ['p1' => '1.° cuatrimestre', 'p2' => '2.° cuatrimestre', 'ambos' => 'los dos períodos'];
+        ActivityLogger::log(
+            $req,
+            'Configuró la ventana de nota final del ciclo ' . $v->ciclo_lectivo,
+            'ventana.update',
+            'VentanaNotaFinal', $v->id,
+            $previa ? [
+                'Períodos habilitados' => $alcances[$previa->alcanceNormalizado()] ?? $previa->alcanceNormalizado(),
+                'Desde' => $previa->fecha_inicio?->format('d/m/Y H:i'),
+                'Hasta' => $previa->fecha_fin?->format('d/m/Y H:i'),
+            ] : null,
+            [
+                'Períodos habilitados' => $alcances[$v->alcanceNormalizado()] ?? $v->alcanceNormalizado(),
+                'Desde' => $inicio->format('d/m/Y H:i'),
+                'Hasta' => $fin->format('d/m/Y H:i'),
+            ]
+        );
 
         return response()->json([
             'ok'            => true,

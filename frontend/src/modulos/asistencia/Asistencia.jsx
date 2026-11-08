@@ -25,12 +25,43 @@ import "./Asistencia.css";
 const CACHE_KEY = "asistencia:cursos";
 
 const TABS = [
-  { id: "tomar", label: "Tomar asistencia", icon: CalendarCheck },
-  { id: "clases", label: "Clases", icon: CalendarDays },
-  { id: "historial", label: "Historial", icon: History },
-  { id: "inasistencias", label: "Inasistencias", icon: FileWarning },
-  { id: "justificaciones", label: "Justificaciones", icon: ClipboardList },
-  { id: "estadisticas", label: "Estadísticas", icon: BarChart3 },
+  {
+    id: "tomar",
+    label: "Pasar lista",
+    icon: CalendarCheck,
+    // Sin guía acá: la pantalla arranca pidiendo el curso y esa línea sobraba.
+    // Cuando ya hay curso elegido, la explicación la da "Pasar lista" arriba.
+  },
+  {
+    id: "clases",
+    label: "Clases",
+    icon: CalendarDays,
+    guia: "Las listas que ya se pasaron, mes por mes. Desde acá se abre cualquiera para verla o corregirla.",
+  },
+  {
+    id: "historial",
+    label: "Historial",
+    icon: History,
+    guia: "Buscar las marcas de un curso o de un alumno en un rango de fechas, con el detalle de cada clase.",
+  },
+  {
+    id: "inasistencias",
+    label: "Inasistencias",
+    icon: FileWarning,
+    guia: "Los alumnos que superan un porcentaje de faltas. Sirve para saber a quién llamar primero.",
+  },
+  {
+    id: "justificaciones",
+    label: "Justificaciones",
+    icon: ClipboardList,
+    guia: "Registrar el motivo de una falta y aprobar o rechazar los justificativos que están pendientes.",
+  },
+  {
+    id: "estadisticas",
+    label: "Estadísticas",
+    icon: BarChart3,
+    guia: "El resumen del año: evolución mes a mes y quiénes tienen mejor y peor asistencia.",
+  },
 ];
 
 export default function Asistencia() {
@@ -63,6 +94,8 @@ export default function Asistencia() {
   const [maps, setMaps] = useState(() => getCached(CACHE_KEY));
   const [error, setError] = useState(null);
   const [initialTomar, setInitialTomar] = useState(null);
+  // "Ver faltas" desde Inasistencias lleva al alumno exacto al Historial.
+  const [initialHistorial, setInitialHistorial] = useState(null);
   // Cada vez que se guarda en "tomar", las tarjetas de "clases" recargan.
   const [clasesKey, setClasesKey] = useState(0);
   const fetchingRef = useRef(false);
@@ -118,6 +151,11 @@ export default function Asistencia() {
     setClasesKey((k) => k + 1);
   };
 
+  const handleVerFaltasAlumno = (alumno) => {
+    setInitialHistorial(alumno);
+    activateTab("historial");
+  };
+
   return (
     <div className="asist-page">
       <div className="asist-container">
@@ -125,7 +163,7 @@ export default function Asistencia() {
           <div>
             <Breadcrumbs items={[{ label: "Asistencia" }]} />
             <h1 className="asist-title">Asistencia e inasistencias</h1>
-            <p className="asist-subtitle">Clases, asistencias y justificaciones por curso.</p>
+            <p className="asist-subtitle">Pasá la lista, revisá las faltas de cada curso y justificá las inasistencias.</p>
           </div>
         </div>
 
@@ -147,6 +185,13 @@ export default function Asistencia() {
           })}
         </div>
 
+        {/* Una línea que dice para qué sirve lo que se está viendo: las pestañas
+            Historial / Clases / Inasistencias se parecen entre sí y sin esta
+            aclaración no se entiende cuál abrir. */}
+        {TABS.find((t) => t.id === tab)?.guia && (
+          <p className="asist-guia">{TABS.find((t) => t.id === tab).guia}</p>
+        )}
+
         {error && !maps && (
           <div className="asist-error">{error}</div>
         )}
@@ -164,8 +209,10 @@ export default function Asistencia() {
                     <TomarAsistencia maps={maps} initial={tab === "tomar" ? initialTomar : null} onSaved={handleTomarSaved} />
                   )}
                   {t.id === "clases" && <ClasesAsistencia maps={maps} user={user} onEdit={handleClasesEdit} refreshKey={clasesKey} />}
-                  {t.id === "historial" && <HistorialAsistencia maps={maps} />}
-                  {t.id === "inasistencias" && <InasistenciasAsistencia maps={maps} />}
+                  {t.id === "historial" && (
+                    <HistorialAsistencia maps={maps} initial={tab === "historial" ? initialHistorial : null} />
+                  )}
+                  {t.id === "inasistencias" && <InasistenciasAsistencia maps={maps} onVerFaltas={handleVerFaltasAlumno} />}
                   {t.id === "justificaciones" && <JustificacionesAsistencia maps={maps} user={user} />}
                   {t.id === "estadisticas" && <EstadisticasAsistencia maps={maps} />}
                 </div>

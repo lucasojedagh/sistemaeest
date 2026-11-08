@@ -65,10 +65,13 @@ Route::middleware(['auth.token', 'permiso'])->group(function () {
     // Ticket de impresión de un solo uso (60s) para iframes/ventanas.
     Route::post('/print/ticket', [AuthApiController::class, 'printTicket']);
 
-    // Confirmación de contraseña (admin, directivo, jefe preceptores)
+    // Confirmación de contraseña: la puede pedir cualquier cuenta autenticada
+    // (el catálogo ya la lista en Permisos::SIEMPRE). No habilita nada por sí
+    // sola: cada acción destructiva sigue chequeando su propio permiso y alcance.
+    // Con el candado de rango puesto, un preceptor nunca podía confirmar y el
+    // "Deshacer" de su propia clase le devolvía 403 en el modal de la clave.
     // Throttle dedicado: es un chequeo de contraseña, no debe permitir fuerza bruta.
-    // 15/10min da margen para varias acciones destructivas seguidas sin bloquear al admin.
-    Route::middleware(['role:admin,directivo,jefe_preceptores', 'throttle:15,10'])
+    Route::middleware('throttle:15,10')
         ->post('/auth/confirm-password', [AuthApiController::class, 'confirmPassword']);
 
     // Equipos con sesión abierta: permite cerrar uno solo sin perder los demás.
@@ -157,8 +160,10 @@ Route::middleware(['auth.token', 'permiso'])->group(function () {
     Route::get('/cursos',                     [CursoController::class, 'index']);
     Route::get('/materias/todas',             [MateriaController::class, 'todas']);
     Route::get('/anios/{anio}/materias',      [MateriaController::class, 'indexByAnio'])->whereNumber('anio');
-    // Diagnóstico de backups: expone host/BD y rutas, solo roles de gestión (como el resto de backups).
-    Route::middleware('role:admin,directivo,jefe_preceptores')
+    // Diagnóstico de backups: expone host/BD y rutas. Desde que la escuela decidió
+    // que el único que maneja la base desde el sistema es el Admin, la pantalla de
+    // respaldos es role:admin: ni directivo, ni jefatura, ni un rol rango 5.
+    Route::middleware('role:admin')
         ->get('/backups/sql/check',          [BackupController::class, 'check']);
     // Revisión de cobertura: cruza cursos, horarios, fichas y cuentas para encontrar
     // los huecos que ningún formulario rechaza pero que dejan un curso sin nadie que
@@ -174,6 +179,16 @@ Route::middleware(['auth.token', 'permiso'])->group(function () {
         ->get('/historial', [HistorialController::class, 'index']);
     Route::middleware('role:admin,directivo,jefe_preceptores')
         ->post('/historial/refresh', [HistorialController::class, 'refresh']);
+    // Descargar el historial completo es de la cuenta Admin y de nadie más
+    // (historial.exportar está en SOLO_ADMIN); role:admin es el candado extra,
+    // igual que en el borrado.
+    Route::middleware(['role:admin', 'throttle:20,60'])
+        ->get('/historial/export', [HistorialController::class, 'export']);
+    // Vaciar el historial borra la auditoría completa de la escuela. Además del
+    // permiso del catálogo (historial.limpiar está en SOLO_ADMIN), role:admin es
+    // el candado extra: ni un rol personalizado de rango 5 lo puede llamar.
+    Route::middleware(['role:admin', 'throttle:6,60'])
+        ->delete('/historial', [HistorialController::class, 'limpiar']);
     // Sello de cambios: numero por tipo de dato, para avisar "hay novedades".
     // Lo pueden consultar todos los roles (solo devuelve numeros, sin datos).
     Route::get('/datos/sello', [HistorialController::class, 'sello']);
@@ -198,6 +213,7 @@ Route::middleware(['auth.token', 'permiso'])->group(function () {
         Route::post('/alumnos',                     [AlumnoController::class, 'store']);
         Route::delete('/alumnos/{alumno}',          [AlumnoController::class, 'destroy'])->whereNumber('alumno');
         Route::post('/alumnos/{alumno}/egresar',    [AlumnoController::class, 'egresar'])->whereNumber('alumno');
+        Route::post('/alumnos/{alumno}/inactivar',  [AlumnoController::class, 'inactivar'])->whereNumber('alumno');
         // Alta masiva desde Excel: leer la planilla es pesado, así que lleva su
         // propio throttle. Primero vista previa, después importar.
         Route::middleware('throttle:20,60')->group(function () {
@@ -229,12 +245,18 @@ Route::middleware(['auth.token', 'permiso'])->group(function () {
 
         Route::post('/ciclo/promocion',             [CicloLectivoController::class, 'promote']);
         Route::post('/admin/years/enable',          [CicloLectivoController::class, 'enableYears']);
-        // Backups: operaciones pesadas/destructivas con throttle dedicado (el uso legítimo es esporádico).
-        Route::middleware('throttle:20,60')->group(function () {
-            Route::post('/backups/sql/email',       [BackupController::class, 'emailBackup']);
-            Route::get('/backups/sql/download',     [BackupController::class, 'download']);
-            Route::post('/backups/sql/import',      [BackupController::class, 'import']);
-        });
+    });
+
+    // ===== RESPALDOS: solo el rol Admin =====
+    // Bajan o reemplazan la base entera. El catálogo ya reserva estas acciones
+    // para el Admin (Permisos::SOLO_ADMIN) y este role:admin es el candado extra:
+    // un rol personalizado de rango 5 tampoco entra. Lleva su propio throttle
+    // porque el uso legítimo es esporádico y una descarga pesada repetida tumba
+    // el server. El botón de "enviar el backup por mail" se sacó del sistema:
+    // mandaba la base completa a un correo y no se usaba.
+    Route::middleware(['role:admin', 'throttle:20,60'])->group(function () {
+        Route::get('/backups/sql/download',     [BackupController::class, 'download']);
+        Route::post('/backups/sql/import',      [BackupController::class, 'import']);
     });
 
     // ===== ESCRITURA (admin, directivo, jefe_preceptores Y preceptor en su ámbito) =====

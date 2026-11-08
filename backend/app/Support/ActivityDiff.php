@@ -125,12 +125,15 @@ class ActivityDiff
 
     /**
      * Mapa por alumno: cada clave es un alumno y su valor un mapa de campos.
-     * Es el formato de la planilla de calificaciones.
+     * Es el formato de la planilla de calificaciones. El mapa vacío cuenta: es
+     * el alumno que todavía no tiene ninguna nota, que es justo el caso más
+     * frecuente la primera vez que se carga un curso.
      */
     public static function esPlanilla($arr): bool
     {
         if (!is_array($arr) || $arr === [] || array_is_list($arr)) return false;
         foreach ($arr as $v) {
+            if ($v === []) continue;
             if (!is_array($v) || array_is_list($v)) return false;
         }
         return true;
@@ -147,7 +150,7 @@ class ActivityDiff
         'telefono' => 'Teléfono', 'direccion' => 'Dirección', 'parentesco' => 'Parentesco',
         // Alumnos
         'estado' => 'Estado', 'especialidad' => 'Especialidad', 'observaciones' => 'Observaciones',
-        'tiene_ppi' => 'TienePlanilla PPI', 'tiene_ae' => 'TieneAdecuación curricular',
+        'tiene_ppi' => 'Planilla PPI', 'tiene_ae' => 'Adecuación curricular',
         'recursando' => 'Materias que recursa', 'intensificacion' => 'Intensificación',
         // Cursos y materias
         'anio' => 'Año', 'division' => 'División', 'grupo' => 'Grupo', 'turno' => 'Turno',

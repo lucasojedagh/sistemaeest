@@ -348,6 +348,29 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* Aviso de sesión no verificada (token guardado, API no respondió) */
+.auth-session-note {
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--amber-200, #fde68a);
+  background-color: rgba(255, 251, 235, 0.9);
+  padding: var(--sp-2-5) var(--sp-5);
+  font-size: var(--text-sm);
+  color: var(--amber-700, #b45309);
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+.auth-session-note button {
+  margin-top: var(--sp-2, 8px);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* ---------- Botón principal (gradiente) ---------- */
 .auth-btn {
   position: relative;

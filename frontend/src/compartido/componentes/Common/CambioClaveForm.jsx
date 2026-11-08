@@ -9,6 +9,7 @@ import "./CambioClaveForm.css";
 
 export default function CambioClaveForm({ compacto = false, onExito }) {
   const { user, updateProfile, logout } = useAuth();
+  const [actual, setActual] = useState("");
   const [clave, setClave] = useState("");
   const [confirmada, setConfirmada] = useState("");
   const [visible, setVisible] = useState(false);
@@ -18,6 +19,10 @@ export default function CambioClaveForm({ compacto = false, onExito }) {
   const enviar = async (e) => {
     e.preventDefault();
     if (enviando) return;
+    if (!actual) {
+      setError("Escribí tu contraseña actual para poder cambiarla.");
+      return;
+    }
     if (clave.length < 8) {
       setError("La clave tiene que tener al menos 8 caracteres.");
       return;
@@ -31,7 +36,8 @@ export default function CambioClaveForm({ compacto = false, onExito }) {
     try {
       // El backend pide nombre y email además de la clave: se reenvían los
       // que ya tiene la cuenta, que en este paso nadie editó.
-      await updateProfile({ name: user?.name ?? "", email: user?.email ?? "", password: clave });
+      await updateProfile({ name: user?.name ?? "", email: user?.email ?? "", password: clave, password_actual: actual });
+      setActual("");
       setClave("");
       setConfirmada("");
       onExito?.();
@@ -56,6 +62,22 @@ export default function CambioClaveForm({ compacto = false, onExito }) {
           </div>
         </div>
       )}
+
+      <div className="ccf-campo">
+        <label className="ccf-label" htmlFor="ccf-actual">Contraseña actual</label>
+        <div className="ccf-input-wrap">
+          <input
+            id="ccf-actual"
+            type={visible ? "text" : "password"}
+            value={actual}
+            onChange={(e) => setActual(e.target.value)}
+            autoComplete="current-password"
+            placeholder="La que estás usando ahora"
+            className="ccf-input"
+            disabled={enviando}
+          />
+        </div>
+      </div>
 
       <div className="ccf-campo">
         <label className="ccf-label" htmlFor="ccf-clave">Clave nueva</label>

@@ -30,7 +30,11 @@ Route::middleware('auth.token')->group(function () {
     Route::get('/calificaciones/planilla', [AlumnoCalificacionesController::class, 'printPlanilla']);
     // Descarga el mismo diseño en Excel (texto real, se imprime sin pixelarse).
     Route::get('/calificaciones/planilla/excel', [AlumnoCalificacionesController::class, 'descargarPlanillaExcel']);
-    Route::post('/calificaciones/planilla/guardar', [AlumnoCalificacionesController::class, 'guardarPlanilla']);
+    // Guardar desde la planilla es la única escritura por esta via: lleva su
+    // propio limite, porque esta excluida del CSRF (viaja con token, no con
+    // cookies) y sin esto se podria repetir sin costo.
+    Route::post('/calificaciones/planilla/guardar', [AlumnoCalificacionesController::class, 'guardarPlanilla'])
+        ->middleware('throttle:60,1');
 
     Route::get('/horarios/planilla', [HorarioController::class, 'printHorario']);
 

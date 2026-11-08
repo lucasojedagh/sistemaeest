@@ -30,6 +30,36 @@ class AsistenciaController extends Controller
     private static array $CLASE_ESTADOS = AsistenciaReglas::CLASE_ESTADOS;
     private static array $J_ESTADOS = AsistenciaReglas::J_ESTADOS;
 
+    // Cuántas filas trae como máximo cada listado. Son un seguro para el server
+    // con 1200 alumnos, no un capricho: cuando la realidad pasa de este número
+    // la respuesta lo avisa ('recortado') para que la pantalla lo diga.
+    private const TOPES = [
+        'clases' => 500,
+        'historial' => 1000,
+        'inasistencias' => 200,
+        'justificaciones' => 500,
+    ];
+
+    /** Justificaciones cargadas sobre las marcas de una clase. */
+    private function countJustificadasDeClase(int $claseId): int
+    {
+        return DB::table('asistencia_justificaciones')
+            ->join('asistencias', 'asistencias.id', '=', 'asistencia_justificaciones.asistencia_id')
+            ->where('asistencias.clase_id', $claseId)
+            ->count();
+    }
+
+    /** Mensaje común: una clase con papeles encima no se borra ni se suspende. */
+    private function avisoJustificadas(int $numero, string $label, int $cuantas, string $accion): string
+    {
+        return "La clase #{$numero} de {$label} tiene {$cuantas} justificaci"
+            . ($cuantas === 1 ? 'ón cargada' : 'ones cargadas')
+            . ". No se hace la {$accion} para no perder esos papeles: "
+            . ($cuantas === 1
+                ? 'primero rechazá o borrá esa justificación.'
+                : 'primero rechazá o borrá esas justificaciones.');
+    }
+
     /**
      * Ids de curso visibles para el usuario según el alcance de lectura de
      * asistencia. null = todos los cursos; lista vacía = no ve ninguno.
@@ -94,8 +124,11 @@ class AsistenciaController extends Controller
             $q->whereYear("{$tabla}.fecha", $year);
         }
         if ($mes = $req->query('mes')) {
-            if (preg_match('/^\d{4}-(\d{2})$/', (string) $mes, $m) === 1) {
-                $q->whereMonth("{$tabla}.fecha", (int) $m[1]);
+            if (preg_match('/^(\d{4})-(\d{2})$/', (string) $mes, $m) === 1) {
+                // El formato YYYY-MM trae el año: hay que filtrar también por año,
+                // si no "noviembre 2024" devuelve las clases de noviembre de este año.
+                $q->whereYear("{$tabla}.fecha", (int) $m[1])
+                  ->whereMonth("{$tabla}.fecha", (int) $m[2]);
             } elseif (ctype_digit((string) $mes)) {
                 $q->whereMonth("{$tabla}.fecha", (int) $mes);
             } else {
@@ -142,7 +175,16 @@ class AsistenciaController extends Controller
         // lista el selector ofrece cursos que después devuelven 403 al guardar,
         // y el aviso recién aparece después de marcar los 30 alumnos.
         // null = puede en todos (no se agrega la clave).
-        if ($this->alcanceEditar($req, 'asistencia') === Alcances::ASIGNADO) {
+        $puedeAccion = Permisos::puede($this->rolDe($req), 'asistencia.editar');
+        $alcanceEditar = $this->alcanceEditar($req, 'asistencia');
+        if (!$puedeAccion || $alcanceEditar === Alcances::NADA) {
+            // Sin acción o sin alcance la lista va vacía a propósito: si se omite,
+            // el frontend la lee como "todos" y habilita botones que devuelven 403.
+            // 'puede_marcar' distingue al rol que no toma asistencia de la cuenta
+            // que sí la toma pero no tiene ningún curso asignado.
+            $normalized['editables'] = [];
+            $normalized['puede_marcar'] = false;
+        } elseif ($alcanceEditar === Alcances::ASIGNADO) {
             $editables = [];
             foreach ($this->assignedPairs($req) as $a) {
                 if (empty($a['anio'])) continue;
@@ -161,7 +203,7 @@ class AsistenciaController extends Controller
         }
 
         $anio = $req->integer('anio');
-        $division = $anio ? strtoupper(trim((string) $req->query('division', ''))) : null;
+        $division = $anio ? (strtoupper(trim((string) $req->query('division', ''))) ?: null) : null;
 
         if ($anio) {
             $this->assertCanVerCurso($req, $anio, $division);
@@ -182,7 +224,29 @@ class AsistenciaController extends Controller
 
         $this->aplicarFiltrosFecha($q, $req, 'clases');
 
-        $clases = $q->orderByDesc('fecha')->orderByDesc('numero_clase')->limit(500)->get();
+        $topeClases = self::TOPES['clases'];
+        $totalClases = (clone $q)->count();
+        $clases = $q->orderByDesc('fecha')->orderByDesc('numero_clase')->limit($topeClases)->get();
+
+        // El resumen lo arma MySQL sobre todas las clases del filtro. Antes se
+        // contaba sobre $clases, que está topada, así que con más de 500 clases
+        // "Clases dictadas" y el promedio del mes salían calculados a medias.
+        $porEstado = $q->clone()->getQuery()
+            ->reorder()
+            ->selectRaw('clases.estado AS estado, COUNT(*) AS cantidad')
+            ->groupBy('clases.estado')
+            ->get()
+            ->pluck('cantidad', 'estado');
+
+        $marcas = $q->clone()->getQuery()
+            ->reorder()
+            ->leftJoin('asistencias', 'asistencias.clase_id', '=', 'clases.id')
+            ->selectRaw(<<<'SQL'
+                SUM(asistencias.id IS NOT NULL) AS marcados,
+                SUM(asistencias.estado = 'presente') AS presentes,
+                SUM(asistencias.estado = 'tarde') AS tardanzas
+            SQL)
+            ->first();
 
         $out = $clases->map(function (Clase $cl) {
             $counts = ['presente' => 0, 'ausente' => 0, 'justificado' => 0, 'tarde' => 0];
@@ -217,10 +281,14 @@ class AsistenciaController extends Controller
         return response()->json([
             'clases' => $out,
             'resumen' => [
-                'dictadas' => $clases->where('estado', 'dictada')->count(),
-                'suspendidas' => $clases->where('estado', 'suspendida')->count(),
-                'total_asistencias' => $clases->sum(fn (Clase $c) => (int) $c->asistencias->count()),
+                'dictadas' => (int) ($porEstado['dictada'] ?? 0),
+                'suspendidas' => (int) ($porEstado['suspendida'] ?? 0),
+                'total_asistencias' => (int) ($marcas->marcados ?? 0),
+                'presentes' => (int) ($marcas->presentes ?? 0),
+                'tardanzas' => (int) ($marcas->tardanzas ?? 0),
             ],
+            'total_clases' => $totalClases,
+            'recortado' => $totalClases > $topeClases,
         ]);
     }
 
@@ -250,7 +318,7 @@ class AsistenciaController extends Controller
         $curso = $this->resolverCurso($anio, $division);
         $alumnosEnCurso = Alumno::where('anio', $anio)
             ->where('division', $division)
-            ->where('estado', '!=', 'Egresado')
+            ->cursando()
             ->pluck('id')
             ->all();
 
@@ -268,6 +336,7 @@ class AsistenciaController extends Controller
         }
 
         $estado = $data['estado'] ?? ($submit->isEmpty() ? 'suspendida' : 'dictada');
+        $marcasGuardadas = $estado === 'suspendida' ? 0 : $submit->count();
 
         $args = [$req, $curso, $fecha, $estado, $data, $submit];
 
@@ -291,18 +360,22 @@ class AsistenciaController extends Controller
                         : null,
                 ]);
 
+                // Una clase suspendida no tiene marcas: si alguien manda la
+                // planilla y la deja suspendida, las marcas no entran.
                 $rows = [];
-                foreach ($submit as $al) {
-                    $rows[] = [
-                        'clase_id'   => $clase->id,
-                        'alumno_id'  => (int) $al['alumno_id'],
-                        'estado'     => $al['estado'],
-                        'anotacion'  => isset($al['anotacion']) && trim((string) $al['anotacion']) !== ''
-                            ? trim((string) $al['anotacion'])
-                            : null,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ];
+                if ($estado !== 'suspendida') {
+                    foreach ($submit as $al) {
+                        $rows[] = [
+                            'clase_id'   => $clase->id,
+                            'alumno_id'  => (int) $al['alumno_id'],
+                            'estado'     => $al['estado'],
+                            'anotacion'  => isset($al['anotacion']) && trim((string) $al['anotacion']) !== ''
+                                ? trim((string) $al['anotacion'])
+                                : null,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ];
+                    }
                 }
                 if (!empty($rows)) {
                     Asistencia::insert($rows);
@@ -323,7 +396,7 @@ class AsistenciaController extends Controller
 
         ActivityLogger::log(
             $req,
-            'Registró clase #' . $clase->numero_clase . ' de ' . CourseLabel::label($anio, $division) . ' (' . $fecha . ') con ' . $submit->count() . ' alumnos',
+            'Registró clase #' . $clase->numero_clase . ' de ' . CourseLabel::label($anio, $division) . ' (' . $fecha . ') con ' . $marcasGuardadas . ' marcas',
             'asistencia.store',
             'Clase',
             $clase->id,
@@ -332,7 +405,7 @@ class AsistenciaController extends Controller
                 'curso'   => CourseLabel::label($anio, $division),
                 'fecha'   => $fecha,
                 'estado'  => $estado,
-                'alumnos' => $submit->count(),
+                'marcas'  => $marcasGuardadas,
             ]
         );
 
@@ -345,8 +418,12 @@ class AsistenciaController extends Controller
             ->with(['asistencias.alumno:id,nombre,apellido,anio,division', 'asistencias.justificacion:id,asistencia_id,estado,motivo'])
             ->findOrFail($claseId);
 
+        // La planilla se arma con los alumnos que cursan: un egresado o un
+        // inactivo sigue ligado al curso por sus datos históricos, pero no
+        // tiene que aparecer para tomar lista.
         $alumnosCurso = Alumno::where('anio', $clase->curso->anio)
             ->where('division', $clase->curso->division)
+            ->cursando()
             ->orderBy('apellido')->orderBy('nombre')
             ->get(['id', 'nombre', 'apellido']);
 
@@ -379,7 +456,11 @@ class AsistenciaController extends Controller
             })
             ->map(fn ($a) => [
                 'alumno_id'    => (int) $a->alumno_id,
-                'nombre'       => trim(($a->alumno->apellido ?? '') . ', ' . ($a->alumno->nombre ?? '')),
+                // Sin el alumno (baja definitiva) no hay apellido ni nombre: armar
+                // la cadena igual dejaba una coma suelta como único nombre.
+                'nombre'       => $a->alumno
+                    ? trim($a->alumno->apellido . ', ' . $a->alumno->nombre)
+                    : 'Alumno n.° ' . $a->alumno_id,
                 'estado'       => $a->estado,
                 'curso_actual' => $a->alumno ? CourseLabel::label($a->alumno->anio, $a->alumno->division) : 'ya no está en el padrón',
             ])
@@ -479,7 +560,7 @@ class AsistenciaController extends Controller
         $curso = $clase->curso;
         $alumnosEnCurso = Alumno::where('anio', $curso->anio)
             ->where('division', $curso->division)
-            ->where('estado', '!=', 'Egresado')
+            ->cursando()
             ->pluck('id')
             ->all();
 
@@ -496,14 +577,40 @@ class AsistenciaController extends Controller
             ], 422);
         }
 
-        DB::transaction(function () use ($clase, $data, $submit, $req) {
-            $clase->hora_inicio = $data['hora_inicio'] ?? $clase->hora_inicio;
-            $clase->hora_fin    = $data['hora_fin'] ?? $clase->hora_fin;
+        // Una clase suspendida no puede tener marcas: son lo que se suspende.
+        // Antes las marcas quedaban guardadas igual y seguían contando en el
+        // Historial, Inasistencias y Estadísticas con la clase "suspendida".
+        $quedaSuspendida = ($data['estado'] ?? $clase->estado) === 'suspendida';
+        if ($quedaSuspendida) {
+            $justificadas = $this->countJustificadasDeClase($clase->id);
+            if ($justificadas > 0) {
+                abort(422, $this->avisoJustificadas(
+                    $clase->numero_clase,
+                    CourseLabel::label($curso->anio, $curso->division),
+                    $justificadas,
+                    'suspensión'
+                ));
+            }
+        }
+
+        DB::transaction(function () use ($clase, $data, $submit, $quedaSuspendida) {
+            foreach (['hora_inicio', 'hora_fin'] as $campoHora) {
+                // null explícito significa "sin horario". Con ?? el valor viejo
+                // no se podía borrar nunca, aunque la pantalla lo mandara vacío.
+                if (array_key_exists($campoHora, $data)) {
+                    $clase->$campoHora = $data[$campoHora];
+                }
+            }
             $clase->estado      = $data['estado'] ?? $clase->estado;
             $clase->comentario  = isset($data['comentario']) && trim((string) $data['comentario']) !== ''
                 ? trim((string) $data['comentario'])
                 : null;
             $clase->save();
+
+            if ($quedaSuspendida) {
+                Asistencia::where('clase_id', $clase->id)->delete();
+                return;
+            }
 
             // Sincroniza manteniendo los IDs existentes para no disparar cascade
             // en asistencia_justificaciones. Las filas de alumnos que ya no
@@ -556,31 +663,33 @@ class AsistenciaController extends Controller
 
     public function destroy(Request $req, int $claseId): JsonResponse
     {
+        $clase = Clase::with('curso:id,anio,division')->findOrFail($claseId);
+        $label = CourseLabel::label($clase->curso->anio, $clase->curso->division);
+        $numero = $clase->numero_clase;
+
         // Eliminar una clase ya registrada es una acción de supervisión: exige
         // alcance de escritura total sobre asistencia (configurable por rol).
+        // La excepción es el dueño de la clase: sin esto, el "Deshacer" que la
+        // propia pantalla ofrece al guardar una lista nunca le funcionaba a un
+        // preceptor (creaba la clase y el servidor le respondía 403).
         if (!$this->editaTodo($req, 'asistencia')) {
-            abort(403, 'Solo la supervisión puede eliminar una clase registrada.');
+            $esSuya = (int) $clase->responsable_id === (int) $req->user()->id;
+            if (!$esSuya) {
+                abort(403, 'Solo la supervisión puede eliminar una clase registrada.');
+            }
+            $this->assertCanOperar($req, (int) $clase->curso->anio, $clase->curso->division);
         }
 
         // Borra clase + asistencias: exige contraseña reciente.
         $this->assertPasswordConfirmed($req);
 
-        $clase = Clase::with('curso:id,anio,division')->findOrFail($claseId);
-        $label = CourseLabel::label($clase->curso->anio, $clase->curso->division);
-        $numero = $clase->numero_clase;
-
         // Las justificaciones cuelgan de la asistencia y se van con ella por
         // cascada (documento incluido). Una clase justificada no se borra:
         // se edita y se marca suspendida.
-        $justificadas = DB::table('asistencia_justificaciones')
-            ->join('asistencias', 'asistencias.id', '=', 'asistencia_justificaciones.asistencia_id')
-            ->where('asistencias.clase_id', $claseId)
-            ->count();
+        $justificadas = $this->countJustificadasDeClase($claseId);
         if ($justificadas > 0) {
             return response()->json([
-                'message' => "La clase #{$numero} de {$label} tiene {$justificadas} justificación"
-                    . ($justificadas === 1 ? '' : 'es')
-                    . " cargada. No se elimina para no perder esos papeles: editá la clase y dejala como suspendida.",
+                'message' => $this->avisoJustificadas($numero, $label, $justificadas, 'eliminación'),
             ], 422);
         }
 
@@ -600,7 +709,7 @@ class AsistenciaController extends Controller
         $alumnoId = $req->integer('alumno_id');
         $dni = trim((string) $req->query('dni', ''));
         $anio = $req->integer('anio');
-        $division = $anio ? strtoupper(trim((string) $req->query('division', ''))) : null;
+        $division = $anio ? (strtoupper(trim((string) $req->query('division', ''))) ?: null) : null;
         $estado = $req->query('estado');
 
         // Se puede buscar por DNI (más acorde que el id interno) o por id.
@@ -644,7 +753,12 @@ class AsistenciaController extends Controller
         if (isset($scope['alumno_id'])) {
             $q->where('asistencias.alumno_id', $scope['alumno_id']);
         } else {
-            $q->where('cu.anio', $scope['anio'])->where('cu.division', $scope['division']);
+            $q->where('cu.anio', $scope['anio']);
+            // Division vacia significa "el ano completo", no una division sin
+            // nombre: filtrar por la cadena vacia devolvia cero filas.
+            if ($scope['division'] !== null) {
+                $q->where('cu.division', $scope['division']);
+            }
         }
 
         if ($estado && in_array($estado, self::$ESTADOS, true)) {
@@ -653,7 +767,10 @@ class AsistenciaController extends Controller
 
         $this->aplicarFiltrosFecha($q, $req, 'cl');
 
-        $rows = $q->orderByDesc('cl.fecha')->orderByDesc('cl.numero_clase')->limit(1000)->get();
+        $topeHistorial = self::TOPES['historial'];
+        $totalFilas = (clone $q)->count();
+        $rows = $q->orderByDesc('cl.fecha')->orderByDesc('cl.numero_clase')->limit($topeHistorial)->get();
+        $recortado = $totalFilas > $topeHistorial;
 
         $detalle = $rows->map(function ($r) {
             return [
@@ -671,21 +788,63 @@ class AsistenciaController extends Controller
             ];
         });
 
+        // Totales y porcentajes los calcula MySQL sobre TODAS las filas del filtro.
+        // Se hacían sobre $rows, que está cortada a $topeHistorial: en un curso con
+        // 120 clases el número que veía la escuela correspondía solo a las últimas
+        // 1000 marcas, así que un alumno con muchas faltas temprano aparecía con
+        // 95-100 % de asistencia. El corte sigue existiendo, pero sólo para el
+        // detalle de abajo.
+        $agregados = (clone $q)
+            ->reorder()
+            // selectRaw se suma a las columnas que ya trae $q para el detalle.
+            // Sin limpiar, el GROUP BY arrastra asistencias.* y MySQL corta con
+            // el error 1055 (only_full_group_by): la pestaña entera daba 500.
+            ->select([])
+            ->selectRaw(<<<'SQL'
+                asistencias.alumno_id AS alumno_id,
+                al.apellido AS apellido,
+                al.nombre AS nombre,
+                al.dni AS dni,
+                COUNT(*) AS clases,
+                SUM(asistencias.estado = 'presente') AS presentes,
+                SUM(asistencias.estado = 'ausente') AS ausentes,
+                SUM(asistencias.estado = 'justificado') AS justificados,
+                SUM(asistencias.estado = 'tarde') AS tardanzas
+            SQL)
+            ->groupBy('asistencias.alumno_id', 'al.apellido', 'al.nombre', 'al.dni')
+            ->get();
+
+        $total = 0;
         $presentes = 0;
         $ausentes = 0;
         $justificados = 0;
         $tardanzas = 0;
-        foreach ($rows as $r) {
-            match ($r->estado) {
-                'presente' => $presentes++,
-                'ausente' => $ausentes++,
-                'justificado' => $justificados++,
-                'tarde' => $tardanzas++,
-                default => null,
-            };
+        $alumnos = [];
+        foreach ($agregados as $g) {
+            $fila = [
+                'alumno_id'    => (int) $g->alumno_id,
+                'nombre'       => $g->nombre,
+                'apellido'     => $g->apellido,
+                'dni'          => $g->dni,
+                'clases'       => (int) $g->clases,
+                'presentes'    => (int) $g->presentes,
+                'ausentes'     => (int) $g->ausentes,
+                'justificados' => (int) $g->justificados,
+                'tardanzas'    => (int) $g->tardanzas,
+            ];
+            $fila['porcentaje'] = AsistenciaReglas::porcentajeAsistencia(
+                $fila['presentes'],
+                $fila['tardanzas'],
+                $fila['clases']
+            );
+            $total        += $fila['clases'];
+            $presentes    += $fila['presentes'];
+            $ausentes     += $fila['ausentes'];
+            $justificados += $fila['justificados'];
+            $tardanzas    += $fila['tardanzas'];
+            $alumnos[] = $fila;
         }
 
-        $total = $rows->count();
         $porcentaje = AsistenciaReglas::porcentajeAsistencia($presentes, $tardanzas, $total);
 
         if (isset($scope['alumno_id'])) {
@@ -710,42 +869,12 @@ class AsistenciaController extends Controller
                     'porcentaje' => $porcentaje,
                 ],
                 'detalle' => $detalle,
+                'total_filas' => $totalFilas,
+                'recortado' => $recortado,
             ]);
         }
 
-        $groups = [];
-        foreach ($rows as $r) {
-            $key = (int) $r->alumno_id;
-            if (!isset($groups[$key])) {
-                $groups[$key] = [
-                    'alumno_id' => $key,
-                    'nombre' => $r->al_nombre,
-                    'apellido' => $r->al_apellido,
-                    'dni' => $r->al_dni,
-                    'clases' => 0,
-                    'presentes' => 0,
-                    'ausentes' => 0,
-                    'justificados' => 0,
-                    'tardanzas' => 0,
-                ];
-            }
-            $groups[$key]['clases']++;
-            match ($r->estado) {
-                'presente' => $groups[$key]['presentes']++,
-                'ausente' => $groups[$key]['ausentes']++,
-                'justificado' => $groups[$key]['justificados']++,
-                'tarde' => $groups[$key]['tardanzas']++,
-                default => null,
-            };
-        }
-
-        $alumnos = collect(array_values($groups))
-            ->map(function ($g) {
-                $g['porcentaje'] = AsistenciaReglas::porcentajeAsistencia($g['presentes'], $g['tardanzas'], $g['clases']);
-                return $g;
-            })
-            ->sortByDesc('porcentaje')
-            ->values();
+        $alumnos = collect($alumnos)->sortByDesc('porcentaje')->values()->all();
 
         return response()->json([
             'tipo' => 'curso',
@@ -764,6 +893,8 @@ class AsistenciaController extends Controller
             ],
             'alumnos' => $alumnos,
             'detalle' => $detalle,
+            'total_filas' => $totalFilas,
+            'recortado' => $recortado,
         ]);
     }
 
@@ -796,7 +927,7 @@ class AsistenciaController extends Controller
         }
 
         $anio = $req->integer('anio');
-        $division = $anio ? strtoupper(trim((string) $req->query('division', ''))) : null;
+        $division = $anio ? (strtoupper(trim((string) $req->query('division', ''))) ?: null) : null;
         $minimo = max(0, (int) $req->query('minimo', 10));
 
         if ($anio) {
@@ -849,16 +980,25 @@ class AsistenciaController extends Controller
             ];
         }
 
-        usort($out, fn ($a, $b) => $b['inasistencias'] <=> $a['inasistencias']);
-        $visibles = array_slice($out, 0, 200);
+        // Orden: primero el porcentaje (lo que lee la dirección), y dentro del
+        // mismo porcentaje la cantidad de faltas como desempate.
+        usort($out, function ($a, $b) {
+            $r = $b['porcentaje_inasistencia'] <=> $a['porcentaje_inasistencia'];
+
+            return $r !== 0 ? $r : $b['inasistencias'] <=> $a['inasistencias'];
+        });
+        $topeInas = self::TOPES['inasistencias'];
+        $visibles = array_slice($out, 0, $topeInas);
 
         // Las fechas de falta (para el corrido, la última y las 5 recientes)
         // se piden solo para los que van en pantalla, ya deduplicadas por día.
         $fechasPorAlumno = [];
+        $asistioPorAlumno = [];
         if ($visibles !== []) {
+            $ids = array_column($visibles, 'alumno_id');
             $filas = $this->queryInasistenciasBase($req, $anio, $division)
                 ->select('asistencias.alumno_id', 'cl.fecha')
-                ->whereIn('asistencias.alumno_id', array_column($visibles, 'alumno_id'))
+                ->whereIn('asistencias.alumno_id', $ids)
                 ->whereIn('asistencias.estado', ['ausente', 'justificado'])
                 ->distinct()
                 ->orderBy('asistencias.alumno_id')
@@ -866,21 +1006,30 @@ class AsistenciaController extends Controller
                 ->get();
 
             foreach ($filas as $f) {
-                $fechasPorAlumno[(int) $f->alumno_id][] = $f->fecha;
+                $fechasPorAlumno[(int) $f->alumno_id][] = (string) $f->fecha;
+            }
+
+            // Día de la última clase a la que sí llegó (presente o tarde). Sirve
+            // de corte: las fechas de falta posteriores son su racha actual.
+            $asistio = $this->queryInasistenciasBase($req, $anio, $division)
+                ->selectRaw('asistencias.alumno_id, MAX(cl.fecha) as ultimo_dia')
+                ->whereIn('asistencias.alumno_id', $ids)
+                ->whereIn('asistencias.estado', ['presente', 'tarde'])
+                ->groupBy('asistencias.alumno_id')
+                ->get();
+
+            foreach ($asistio as $a) {
+                $asistioPorAlumno[(int) $a->alumno_id] = (string) $a->ultimo_dia;
             }
         }
 
         foreach ($visibles as &$item) {
             $fechas = $fechasPorAlumno[$item['alumno_id']] ?? [];
-            $prev = null;
-            $run = 0;
-            $maxConsec = 0;
-            foreach ($fechas as $f) {
-                $run = ($prev !== null && (strtotime($f) - strtotime($prev)) === 86400) ? $run + 1 : 1;
-                $maxConsec = max($maxConsec, $run);
-                $prev = $f;
-            }
-            $item['faltas_consecutivas'] = $maxConsec;
+            $ultimoAsistio = $asistioPorAlumno[$item['alumno_id']] ?? null;
+            $alHilo = $ultimoAsistio === null
+                ? count($fechas)
+                : count(array_filter($fechas, fn ($f) => $f > $ultimoAsistio));
+            $item['faltas_consecutivas'] = $alHilo;
             $item['ultima_falta'] = count($fechas) ? end($fechas) : null;
             $item['inasistencias_recientes'] = array_slice(array_reverse($fechas), 0, 5);
         }
@@ -890,6 +1039,7 @@ class AsistenciaController extends Controller
             'minimo' => $minimo,
             'total_alumnos' => count($out),
             'alumnos' => $visibles,
+            'recortado' => count($out) > $topeInas,
         ]);
     }
 
@@ -900,7 +1050,7 @@ class AsistenciaController extends Controller
         }
 
         $anio = $req->integer('anio');
-        $division = $anio ? strtoupper(trim((string) $req->query('division', ''))) : null;
+        $division = $anio ? (strtoupper(trim((string) $req->query('division', ''))) ?: null) : null;
         $estado = $req->query('estado');
 
         if ($anio) {
@@ -912,7 +1062,7 @@ class AsistenciaController extends Controller
             ->join('clases as cl', 'cl.id', '=', 'a.clase_id')
             ->join('cursos as cu', 'cu.id', '=', 'cl.curso_id')
             ->join('alumnos as al', 'al.id', '=', 'a.alumno_id')
-            ->join('users as reg', 'reg.id', '=', 'asistencia_justificaciones.registrado_por')
+            ->leftJoin('users as reg', 'reg.id', '=', 'asistencia_justificaciones.registrado_por')
             ->leftJoin('users as apr', 'apr.id', '=', 'asistencia_justificaciones.aprobado_por')
             ->select(
                 'asistencia_justificaciones.*',
@@ -947,7 +1097,9 @@ class AsistenciaController extends Controller
 
         $this->aplicarFiltrosFecha($q, $req, 'cl');
 
-        $rows = $q->orderByDesc('asistencia_justificaciones.created_at')->limit(500)->get();
+        $topeJust = self::TOPES['justificaciones'];
+        $totalJust = (clone $q)->count();
+        $rows = $q->orderByDesc('asistencia_justificaciones.created_at')->limit($topeJust)->get();
 
         $out = $rows->map(function ($r) {
             return [
@@ -962,20 +1114,24 @@ class AsistenciaController extends Controller
                 'observacion' => $r->observacion,
                 'estado' => $r->estado,
                 'documento' => $r->documento ? ['id' => $r->documento->id, 'nombre' => $r->documento->nombre] : null,
-                'registrado_por' => trim(($r->reg_nombre ?? '') . ' ' . ($r->reg_apellido ?? '')),
+                'registrado_por' => trim(($r->reg_nombre ?? '') . ' ' . ($r->reg_apellido ?? '')) ?: null,
                 'aprobado_por' => $r->apr_nombre ? trim($r->apr_nombre . ' ' . ($r->apr_apellido ?? '')) : null,
                 'created_at' => $r->created_at?->toDateTimeString(),
             ];
         });
 
-        return response()->json(['justificaciones' => $out]);
+        return response()->json([
+            'justificaciones' => $out,
+            'total_justificaciones' => $totalJust,
+            'recortado' => $totalJust > $topeJust,
+        ]);
     }
 
     public function storeJustificacion(Request $req): JsonResponse
     {
         $data = $req->validate([
             'asistencia_id' => ['required', 'integer', 'min:1'],
-            'motivo'        => ['required', 'string', 'max:500'],
+            'motivo'        => ['required', 'string', 'max:255'],
             'observacion'   => ['nullable', 'string', 'max:1000'],
             'documento_id'  => ['nullable', 'integer', 'min:1', 'exists:documentos,id'],
         ]);
@@ -1063,7 +1219,7 @@ class AsistenciaController extends Controller
         }
 
         $anio = $req->integer('anio');
-        $division = $anio ? strtoupper(trim((string) $req->query('division', ''))) : null;
+        $division = $anio ? (strtoupper(trim((string) $req->query('division', ''))) ?: null) : null;
 
         if ($anio) {
             $this->assertCanVerCurso($req, $anio, $division);
@@ -1143,8 +1299,8 @@ class AsistenciaController extends Controller
         // alumno: así el listado no cambia según el orden en que la BD devuelve
         // las filas (el criterio de fondo es el mismo de siempre).
         $cursosOrdenados = $porCursoGlobal->sortBy(fn ($c) => sprintf('%02d|%s', (int) $c['anio'], (string) $c['division']));
-        $mejoresCursos = $cursosOrdenados->sortByDesc('porcentaje')->take(5)->values();
-        $peoresCursos = $cursosOrdenados->sortBy('porcentaje')->take(5)->values();
+        $mejoresCursos = $cursosOrdenados->sortByDesc('porcentaje')->take(10)->values();
+        $peoresCursos = $cursosOrdenados->sortBy('porcentaje')->take(10)->values();
 
         $porAlumno = $filtrar(Asistencia::query())
             ->join('alumnos as al', 'al.id', '=', 'asistencias.alumno_id')
@@ -1176,8 +1332,12 @@ class AsistenciaController extends Controller
             });
 
         $alumnosOrdenados = $porAlumno->sortBy('alumno_id');
-        $mejoresAlumnos = $alumnosOrdenados->sortByDesc('porcentaje')->take(5)->values();
-        $peoresAlumnos = $alumnosOrdenados->sortByDesc('faltas')->take(5)->values();
+        // Los rankings van por porcentaje de asistencia, que es lo que dice la
+        // pantalla ("mayor / menor asistencia"). Antes el "peor" se ordenaba por
+        // cantidad de faltas: un alumno de un curso con muchas clases podía salir
+        // primero teniendo mejor porcentaje que el segundo.
+        $mejoresAlumnos = $alumnosOrdenados->sortByDesc('porcentaje')->take(10)->values();
+        $peoresAlumnos = $alumnosOrdenados->sortBy('porcentaje')->take(10)->values();
 
         $nombresMes = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
@@ -1223,7 +1383,7 @@ class AsistenciaController extends Controller
 
     private function totalAlumnosScope(Request $req, ?int $anio, ?string $division, ?array $cursoIds): int
     {
-        $q = Alumno::where('estado', '!=', 'Egresado');
+        $q = Alumno::cursando();
         if ($anio) {
             $q->where('anio', $anio)->when($division, fn ($q2) => $q2->where('division', $division));
             return (int) $q->count();
@@ -1254,6 +1414,7 @@ class AsistenciaController extends Controller
         if (!$user) {
             abort(401, 'No autorizado. Iniciá sesión para ver la planilla.');
         }
+        $this->assertPuedeImprimir($req);
 
         $claseId = (int) $req->query('clase_id', 0);
         if (!$claseId) {

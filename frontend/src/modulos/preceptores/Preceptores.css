@@ -693,37 +693,6 @@
   color: var(--gray-400);
 }
 
-/* ---------- Aviso de carga fallida ---------- */
-.prec-error-carga {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  flex-wrap: wrap;
-  margin-bottom: var(--sp-4);
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--radius-lg);
-  background-color: var(--red-50);
-  border: 1px solid var(--red-200);
-  color: var(--red-700);
-  font-size: var(--text-sm);
-}
-
-.prec-error-carga button {
-  padding: var(--sp-1-5) var(--sp-3);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--red-300);
-  background-color: #ffffff;
-  color: var(--red-700);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.prec-error-carga button:hover {
-  background-color: var(--red-100);
-}
-
 /* ---------- Tabla ---------- */
 .prec-table-wrap {
   position: relative;

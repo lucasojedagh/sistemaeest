@@ -1,6 +1,7 @@
 // Pagina de administracion de usuarios del sistema.
 // Permite ver, aprobar/rechazar, crear, eliminar usuarios y asignar cursos/divisiones.
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { UserCheck, UserX, Users, Clock, Shield, ShieldCheck, BookOpen, Save, Search, Plus, Trash2, RefreshCw, X, Eye, EyeOff, ArrowLeft, ChevronRight, KeyRound, Copy, Check } from "lucide-react";
 import useCierreAnimado from "../../compartido/lib/useCierreAnimado";
 import useAviso from "../../compartido/componentes/modals/useAviso";
@@ -20,9 +21,11 @@ import {
 } from "../../compartido/api/auth";
 import { useAuth } from "../auth/AuthContext";
 import RolesPermisos from "./RolesPermisos";
-import { canManageRole, rolLabel, cargarRoleDetalle, ROLE_LEVEL } from "../auth/roles";
+import { canManageRole, rolLabel, cargarRoleDetalle, ROLE_LEVEL, esRolAsignable } from "../auth/roles";
+import { accionHabilitada } from "../../compartido/lib/permisos";
 import Breadcrumbs from "../../compartido/componentes/Common/Breadcrumbs";
 import EmptyState from "../../compartido/componentes/Common/EmptyState";
+import ErrorState from "../../compartido/componentes/Common/ErrorState";
 import Avatar from "../../compartido/componentes/Common/Avatar";
 import { useToast } from "../../compartido/componentes/Common/Toast";
 import { useDeshacerAviso } from "../../compartido/lib/deshacer.jsx";
@@ -31,6 +34,7 @@ import { getCached, setCache, clearCache } from "../../compartido/lib/pageCache"
 import { apiGet } from "../../compartido/lib/api";
 import useConfirmAction from "../../compartido/hooks/useConfirmAction";
 import { cursoLabel } from "../../compartido/lib/cursos";
+import { iniciales } from "../../compartido/lib/iniciales";
 import { mensajeAmable } from "../../compartido/lib/errores";
 import { formatearFecha } from "../../compartido/lib/fechas";
 import "./AdminUsers.css";
@@ -39,10 +43,10 @@ import "./AdminUsers.css";
 // personalizados también tengan su nombre.
 
 // Roles que NO se ofrecen al crear/editar una cuenta desde acá: son la gestión
-// global del sistema y las cuentas pendientes de aprobar. Los roles personalizados
-// ("Roles y permisos") quedan habilitados y canManageRole() filtra por rango.
-const ROLES_NO_ASIGNABLES = ["admin", "directivo", "sin_rol"];
-const esRolAsignable = (r) => !ROLES_NO_ASIGNABLES.includes(r);
+// global del sistema y las cuentas pendientes de aprobar. El admin queda fuera
+// además por esRolAsignable (rango único). Los roles personalizados ("Roles y
+// permisos") quedan habilitados y canManageRole() filtra por rango.
+const ROLES_NO_ASIGNABLES = ["directivo", "sin_rol"];
 
 // Roles que no necesitan cursos asignados (acceden a todo). Los personalizados y
 // el resto de los roles se administran con asignaciones: son las que usa el
@@ -51,12 +55,13 @@ const ROLES_SIN_ASIGNACIONES = ["admin", "directivo", "jefe_preceptores"];
 const esRolConAsignaciones = (r) => !ROLES_SIN_ASIGNACIONES.includes(r);
 
 // Opciones de un selector de rol, agrupadas para que se distinga qué viene del
-// sistema y qué creó la escuela en "Roles y permisos". Solo muestra los roles que
-// el rango de quien está logueado puede dar (canManageRole), más el rol actual del
-// usuario editado si no estuviera en esa lista.
+// sistema y qué creó la escuela en "Roles y permisos". Nunca aparece el rango
+// de Administrador (es único) ni ningún rol que el rango de quien está logueado
+// no pueda dar (canManageRole), más el rol actual del usuario editado si no
+// estuviera en esa lista.
 function OpcionesRol({ roles, actor, incluir, soloAsignables }) {
-  const validos = roles.filter((r) => canManageRole(actor, r) && (!soloAsignables || esRolAsignable(r)));
-  if (incluir && !validos.includes(incluir)) validos.unshift(incluir);
+  const validos = roles.filter((r) => esRolAsignable(r) && canManageRole(actor, r) && (!soloAsignables || !ROLES_NO_ASIGNABLES.includes(r)));
+  if (incluir && esRolAsignable(incluir) && !validos.includes(incluir)) validos.unshift(incluir);
   const sistema = validos.filter((r) => ROLE_LEVEL[r] !== undefined);
   const propios = validos.filter((r) => ROLE_LEVEL[r] === undefined);
   return (
@@ -104,10 +109,6 @@ const TONO_ROL = {
 };
 const tonoRol = (role) => TONO_ROL[role] || "slate";
 
-// Dos iniciales para el avatar, cuando no hay foto.
-const iniciales = (u) =>
-  `${(u?.name || "").trim().charAt(0)}${(u?.apellido || "").trim().charAt(0)}`.toUpperCase() || "?";
-
 // Datos bajo el email: DNI (el backend solo lo trae desde jefe de preceptores)
 // y la fecha que importa según el estado de la cuenta.
 const metaUsuario = (u) => {
@@ -125,12 +126,19 @@ export default function AdminUsers() {
   const [confirmarContrasena, modalPwd] = usePasswordPrompt();
   const { user } = useAuth();
   const [tab, setTab] = useState("all");
+  // "Crear y editar roles" es la casilla roles.configurar: la tienen el Admin y el
+  // jefe de preceptores (el catálogo no la presta a otro rol ni por rango).
+  const puedeRoles = accionHabilitada(user, 'roles.configurar', ['admin', 'jefe_preceptores'].includes(user?.role));
+  const [searchParams] = useSearchParams();
   // "cuentas" = la lista de siempre; "roles" = la pestaña de roles y permisos.
-  const [vista, setVista] = useState("cuentas");
-  const puedeRoles = ["admin", "jefe_preceptores"].includes(user?.role);
+  // ?vista=roles llega de los atajos de la revisión del sistema del panel.
+  const [vista, setVista] = useState(() =>
+    searchParams.get("vista") === "roles" && puedeRoles ? "roles" : "cuentas");
   const [users, setUsers] = useState([]);
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Aviso cuando la lista no pudo leerse (distinto de "no hay cuentas").
+  const [errorCarga, setErrorCarga] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
   const [assignments, setAssignments] = useState([]);
   // Snapshot de las asignaciones tal como las trajo el servidor al seleccionar
@@ -160,6 +168,16 @@ export default function AdminUsers() {
 
   // Determina si el usuario logueado tiene permisos de administracion (admin, directivo o jefe_preceptores)
   const isAdmin = canManageRole(user?.role, "preceptor");
+  // Cada botón del módulo tiene su propia casilla en "Roles y permisos".
+  // Sin lista guardada en el rol manda la regla de siempre: el rango de gestión.
+  const puedeCrearUsuario = accionHabilitada(user, 'usuarios.crear', isAdmin);
+  const puedeAprobarUsuario = accionHabilitada(user, 'usuarios.aprobar', isAdmin);
+  const puedeEliminarUsuario = accionHabilitada(user, 'usuarios.eliminar', isAdmin);
+  const puedeCambiarRolUsuario = accionHabilitada(user, 'usuarios.rol', isAdmin);
+  const puedeClaveTemporal = accionHabilitada(user, 'usuarios.clave_temporal', isAdmin);
+  const puedeEditarCuenta = accionHabilitada(user, 'usuarios.editar', isAdmin);
+  // La selección múltiple solo sirve si hay alguna acción masiva habilitada.
+  const haySeleccionMultiple = puedeAprobarUsuario || puedeEliminarUsuario || puedeCambiarRolUsuario;
 
   // Carga los datos iniciales: usuarios, pendientes y roles.
   // Si hay copia guardada se muestra al instante y se actualiza por detrás;
@@ -193,8 +211,13 @@ export default function AdminUsers() {
       setPending(pending);
       setRoles(rolesData);
       setCache(claveCaché, { users, pending, roles: rolesData });
+      setErrorCarga(null);
       hayDatosRef.current = true;
-    } catch { /* sin datos del backend: la tabla queda vacía */ }
+    } catch (e) {
+      // Un fallo de red o un 429 no puede quedar disfrazado de "no hay cuentas":
+      // se avisa y se ofrece reintentar, conservando lo que ya estaba en pantalla.
+      setErrorCarga(mensajeAmable(e, "No se pudieron cargar las cuentas."));
+    }
     setLoading(false);
   }, []);
 
@@ -631,7 +654,7 @@ export default function AdminUsers() {
             rol: "Rol",
             estado: "Estado",
           }} />
-          {isAdmin && (
+          {puedeCrearUsuario && (
             <button onClick={() => setShowNewUser(true)} className="admin-btn-primary">
               <Plus size={18} /> Nuevo usuario
             </button>
@@ -695,7 +718,7 @@ export default function AdminUsers() {
                 <span className="admin-panel-count-extra">de {baseList.length}</span>
               )}
             </span>
-            {isAdmin && userList.length > 0 && (
+            {haySeleccionMultiple && userList.length > 0 && (
               <label className="admin-select-all" title="Seleccionar todas las cuentas visibles">
                 <input
                   type="checkbox"
@@ -712,25 +735,33 @@ export default function AdminUsers() {
               </label>
             )}
           </div>
-          {isAdmin && selectedIds.length > 0 && (
+          {haySeleccionMultiple && selectedIds.length > 0 && (
             <div className="admin-bulk-bar">
               <span className="admin-bulk-count">{selectedIds.length} seleccionado{selectedIds.length === 1 ? "" : "s"}</span>
               <div className="admin-bulk-actions">
-                <label className="admin-bulk-role">
-                  Rol:
-                  <select value={bulkRole} onChange={(e) => setBulkRole(e.target.value)} className="admin-input admin-input-sm">
-                    <OpcionesRol roles={roles} actor={user?.role} soloAsignables />
-                  </select>
-                </label>
-                <button onClick={() => applyBulk("active", selectedIds, bulkRole)} className="admin-btn-primary admin-btn-sm">
-                  <UserCheck size={14} /> Aprobar
-                </button>
-                <button onClick={() => applyBulk("rejected", selectedIds)} className="admin-btn-secondary admin-btn-sm">
-                  <UserX size={14} /> Rechazar
-                </button>
-                <button onClick={() => applyBulk("delete", selectedIds)} className="admin-btn-danger admin-btn-sm">
-                  <Trash2 size={14} /> Eliminar
-                </button>
+                {puedeCambiarRolUsuario && (
+                  <label className="admin-bulk-role">
+                    Rol:
+                    <select value={bulkRole} onChange={(e) => setBulkRole(e.target.value)} className="admin-input admin-input-sm">
+                      <OpcionesRol roles={roles} actor={user?.role} soloAsignables />
+                    </select>
+                  </label>
+                )}
+                {puedeAprobarUsuario && (
+                  <>
+                    <button onClick={() => applyBulk("active", selectedIds, bulkRole)} className="admin-btn-primary admin-btn-sm">
+                      <UserCheck size={14} /> Aprobar
+                    </button>
+                    <button onClick={() => applyBulk("rejected", selectedIds)} className="admin-btn-secondary admin-btn-sm">
+                      <UserX size={14} /> Rechazar
+                    </button>
+                  </>
+                )}
+                {puedeEliminarUsuario && (
+                  <button onClick={() => applyBulk("delete", selectedIds)} className="admin-btn-danger admin-btn-sm">
+                    <Trash2 size={14} /> Eliminar
+                  </button>
+                )}
                 <button onClick={clearSelection} className="admin-bulk-clear">
                   <X size={14} /> Limpiar
                 </button>
@@ -740,6 +771,8 @@ export default function AdminUsers() {
           <div className="admin-panel-body">
             {loading ? (
               <div className="admin-loading">Cargando datos...</div>
+            ) : errorCarga && users.length === 0 ? (
+              <ErrorState mensaje={errorCarga} onReintentar={() => fetchData(true)} compact />
             ) : userList.length === 0 ? (
               <EmptyState icon={tab === "pending" ? Clock : Users} title={tab === "pending" ? "Sin pendientes" : "No hay usuarios"} description={tab === "pending" ? "No hay cuentas pendientes de verificación." : "No hay usuarios registrados en el sistema."} compact />
             ) : (
@@ -753,7 +786,7 @@ export default function AdminUsers() {
                     onClick={() => selectUser(u)}
                     className={`admin-user-item ${isSelected ? "admin-user-item-selected" : ""} ${selectedIds.includes(u.id) ? "admin-user-item-checked" : ""}`}
                   >
-                    {isAdmin && (
+                    {haySeleccionMultiple && (
                       <label className="admin-user-check" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
@@ -768,7 +801,7 @@ export default function AdminUsers() {
                       titulo={`${u.name} ${u.apellido}`.trim()}
                       className={`admin-avatar admin-tono-${tono}`}
                     >
-                      {iniciales(u)}
+                      {iniciales(u?.name, u?.apellido) || "?"}
                     </Avatar>
                     <div className="admin-user-item-head">
                       <div className="admin-user-item-texto">
@@ -799,7 +832,7 @@ export default function AdminUsers() {
                         </div>
                       </div>
                       <div className="admin-user-item-actions">
-                        {isAdmin && u.status === "pending" && (
+                        {puedeAprobarUsuario && u.status === "pending" && (
                           <>
                             <button onClick={(e) => { e.stopPropagation(); handleVerify(u.id, "active", defaultApproveRole(u)); }} className="admin-icon-btn admin-icon-btn-approve" title="Aprobar">
                               <UserCheck size={16} />
@@ -809,7 +842,7 @@ export default function AdminUsers() {
                             </button>
                           </>
                         )}
-                        {isAdmin && u.status === "active" && u.id !== user?.id && canManageRole(user?.role, u.role) && (
+                        {puedeEliminarUsuario && u.status === "active" && u.id !== user?.id && canManageRole(user?.role, u.role) && (
                           <button onClick={(e) => { e.stopPropagation(); deleteUser(u.id); }} className="admin-icon-btn admin-icon-btn-delete" title="Eliminar">
                             <Trash2 size={16} />
                           </button>
@@ -834,7 +867,7 @@ export default function AdminUsers() {
                     titulo={`${selectedUser.name} ${selectedUser.apellido}`.trim()}
                     className={`admin-avatar admin-avatar-lg admin-tono-${detalleTono}`}
                   >
-                    {iniciales(selectedUser)}
+                    {iniciales(selectedUser?.name, selectedUser?.apellido) || "?"}
                   </Avatar>
                   <div className="admin-detalle-id">
                     <h3 className="admin-panel-title">
@@ -854,15 +887,17 @@ export default function AdminUsers() {
               </div>
 
               <div className="admin-panel-body admin-panel-body-pad">
-                {selectedUser.status === "active" && selectedUser.id !== user?.id && canManageRole(user?.role, selectedUser.role) && (
+                {puedeCambiarRolUsuario && selectedUser.status === "active" && selectedUser.id !== user?.id && canManageRole(user?.role, selectedUser.role) && (
                   <div className="admin-rol-caja">
                     <h4 className="admin-section-title">
                       <Shield size={16} /> Rol de la cuenta
                     </h4>
                     <p className="admin-section-hint">
                       El rol define qué puede hacer y sobre qué cursos o alumnos. Los roles
-                      personalizados se crean y ajustan en "Roles y permisos".
+                      personalizados se crean y ajustan en "Roles y permisos". El rango de
+                      Administrador no aparece: es único y no se reparte.
                     </p>
+                    {esRolAsignable(selectedUser.role) ? (
                     <div className="admin-rol-fila">
                       <select
                         value={rolEdit || selectedUser.role}
@@ -881,6 +916,12 @@ export default function AdminUsers() {
                         <ShieldCheck size={16} /> {cambiandoRol ? "Cambiando…" : "Cambiar rol"}
                       </button>
                     </div>
+                    ) : (
+                      <p className="admin-rol-nota">
+                        Esta es la cuenta de Administrador: su rango no se cambia ni se le
+                        puede dar a otra persona.
+                      </p>
+                    )}
                     {rolEdit !== selectedUser.role && (
                       <p className="admin-rol-nota">
                         {`${rolLabel(selectedUser.role)} → ${rolLabel(rolEdit)}`}
@@ -900,7 +941,7 @@ export default function AdminUsers() {
                       <p className="admin-request-text">{selectedUser.rol_solicitado || "No especificó ninguno"}</p>
                     </div>
 
-                    {isAdmin && (
+                    {puedeAprobarUsuario && (
                       <>
                         <label className="admin-label">Asignar rol al aprobar</label>
                         <select value={assignRole} onChange={(e) => setAssignRole(e.target.value)}
@@ -940,16 +981,18 @@ export default function AdminUsers() {
                         const disponibles = matsAnio.filter((m) => !(a.mats || []).includes(m.id));
                         return (
                           <div key={a._key ?? i} className="admin-assign-row admin-assign-row-wrap">
-                            <select value={a.anio} onChange={(e) => updateAssignment(i, "anio", e.target.value)} className="admin-select">
+                            <select disabled={!puedeEditarCuenta} value={a.anio} onChange={(e) => updateAssignment(i, "anio", e.target.value)} className="admin-select">
                               {[1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>{cursoLabel({ anio: n, division: null })}</option>)}
                             </select>
-                             <select value={a.division || ""} onChange={(e) => updateAssignment(i, "division", e.target.value)} className="admin-select admin-select-wide">
+                             <select disabled={!puedeEditarCuenta} value={a.division || ""} onChange={(e) => updateAssignment(i, "division", e.target.value)} className="admin-select admin-select-wide">
                                <option value="">Todas</option>
                                {["1","2","3","4","5","6","7","8","9"].map(d => <option key={d} value={d}>{d}</option>)}
                              </select>
-                            <button onClick={() => removeAssignment(i)} className="admin-icon-btn admin-icon-btn-remove">
-                              <Trash2 size={14} />
-                            </button>
+                            {puedeEditarCuenta && (
+                              <button onClick={() => removeAssignment(i)} className="admin-icon-btn admin-icon-btn-remove">
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                             {esProfe && conDivision && (
                               <div className="admin-assign-mats">
                                 {(a.mats || []).map((mid) => {
@@ -957,16 +1000,18 @@ export default function AdminUsers() {
                                   return (
                                     <span key={mid} className="admin-assign-mat-chip">
                                       {m?.nombre || `Materia ${mid}`}
-                                      <button
-                                        type="button"
-                                        aria-label={`Quitar ${m?.nombre || mid}`}
-                                        className="admin-assign-mat-x"
-                                        onClick={() => removeMat(i, mid)}
-                                      >×</button>
+                                      {puedeEditarCuenta && (
+                                        <button
+                                          type="button"
+                                          aria-label={`Quitar ${m?.nombre || mid}`}
+                                          className="admin-assign-mat-x"
+                                          onClick={() => removeMat(i, mid)}
+                                        >×</button>
+                                      )}
                                     </span>
                                   );
                                 })}
-                                {disponibles.length > 0 && (
+                                {puedeEditarCuenta && disponibles.length > 0 && (
                                   <select
                                     value=""
                                     className="admin-assign-mat-add"
@@ -987,14 +1032,20 @@ export default function AdminUsers() {
                           </div>
                         );
                       })}
-                      <button onClick={addAssignment} className="admin-add-link">
-                        <Plus size={16} /> Agregar año
-                      </button>
+                      {puedeEditarCuenta ? (
+                        <button onClick={addAssignment} className="admin-add-link">
+                          <Plus size={16} /> Agregar año
+                        </button>
+                      ) : (
+                        <p className="admin-assign-hint">Solo lectura: no tenés permiso para editar las asignaciones de esta cuenta.</p>
+                      )}
                     </div>
 
-                    <button onClick={saveAssignments} className="admin-btn-primary admin-btn-save">
-                      <Save size={16} /> Guardar asignaciones
-                    </button>
+                    {puedeEditarCuenta && (
+                      <button onClick={saveAssignments} className="admin-btn-primary admin-btn-save">
+                        <Save size={16} /> Guardar asignaciones
+                      </button>
+                    )}
                   </>
                 ) : (
                   <div className="admin-info-box">
@@ -1002,7 +1053,7 @@ export default function AdminUsers() {
                   </div>
                 )}
 
-                {selectedUser.status === "active" && selectedUser.id !== user?.id && canManageRole(user?.role, selectedUser.role) && (
+                {puedeClaveTemporal && selectedUser.status === "active" && selectedUser.id !== user?.id && canManageRole(user?.role, selectedUser.role) && (
                   <div className="admin-acceso">
                     <h4 className="admin-section-title admin-section-title-mt">
                       <KeyRound size={16} /> Acceso

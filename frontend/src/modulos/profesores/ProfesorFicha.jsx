@@ -2,10 +2,11 @@
 // FILE: src/components/Profesores/ProfesorFicha.jsx
 // ===============================
 import React from "react";
-import FichaLayout, { field, valBig, card, chipBlue, tag } from "../../compartido/componentes/Common/FichaLayout";
+import FichaLayout, { field, valBig, card, chipBlue, tag, initials } from "../../compartido/componentes/Common/FichaLayout";
 import { cursoLabel } from "../../compartido/lib/cursos";
 import { useAuth } from "../../modulos/auth/AuthContext";
 import { esGestion } from "../../modulos/auth/roles";
+import { accionHabilitada } from "../../compartido/lib/permisos";
 
 /*
  * Componente: ProfesorFicha
@@ -48,16 +49,25 @@ export default function ProfesorFicha({ open, onClose, profesor }) {
   const asigs = asAsignaciones(p.asignaciones);
   const obs = (p.observaciones || "").toString().trim();
   const titulo = `${apellido}, ${nombre}`.replace(/^, |, $/g, "");
-  // Ficha completa solo para gestión (admin/directivo/jefe/prosecretaria). Rangos bajos
-  // ven únicamente contacto (nombre/email) y cursos asignados.
-  const puedeVerTodo = esGestion(currentUser?.role);
+  // Ficha completa solo con "Ver datos personales completos"; sin lista
+  // guardada en el rol decide el rango de siempre (gestión). Rangos bajos ven
+  // únicamente contacto (nombre/email) y cursos asignados.
+  const puedeVerTodo = accionHabilitada(currentUser, 'ficha.datos_personales', esGestion(currentUser?.role));
   // Un profesor no ve las observaciones de sus pares (solo las suyas).
   const esOtroProfesor =
     currentUser?.role === "profesor" &&
     String(email || "").toLowerCase() !== String(currentUser?.email || "").toLowerCase();
 
   return (
-    <FichaLayout open={open} onClose={onClose} titulo={titulo || "Ficha del Profesor"} subtitulo={email}>
+    <FichaLayout
+      open={open}
+      onClose={onClose}
+      titulo={titulo || "Ficha del Profesor"}
+      subtitulo={email}
+      avatarId={p.user_id}
+      avatarVersion={p.avatar_version}
+      avatarFallback={initials(nombre, apellido)}
+    >
       {/* Encabezado: DNI / Email / Condicion (DNI y condición solo gestión) */}
       <div className={card}>
         <div className="ficha-grid">

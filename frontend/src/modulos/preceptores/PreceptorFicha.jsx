@@ -2,10 +2,11 @@
 // FILE: src/components/Preceptores/PreceptorFicha.jsx
 // ===============================
 import React from "react";
-import FichaLayout, { field, valBig, card, chipBlue, tag } from "../../compartido/componentes/Common/FichaLayout";
+import FichaLayout, { field, valBig, card, chipBlue, tag, initials } from "../../compartido/componentes/Common/FichaLayout";
 import { cursoLabel } from "../../compartido/lib/cursos";
 import { useAuth } from "../../modulos/auth/AuthContext";
 import { esGestion, ROLE_LABELS } from "../../modulos/auth/roles";
+import { accionHabilitada } from "../../compartido/lib/permisos";
 
 /*
  * Componente: PreceptorFicha
@@ -45,9 +46,10 @@ function asAsignaciones(x) {
 
 export default function PreceptorFicha({ open, onClose, preceptor }) {
   const { user: currentUser } = useAuth();
-  // Ficha completa solo para gestión (admin/directivo/jefe/prosecretaria). Rangos
-  // bajos ven únicamente contacto (nombre/email) y cursos asignados.
-  const puedeVerTodo = esGestion(currentUser?.role);
+  // Ficha completa solo con "Ver datos personales completos": la casilla manda
+  // cuando el rol tiene lista guardada y sin lista decide el rango de siempre
+  // (gestión). Rangos bajos ven únicamente contacto (nombre/email) y cursos.
+  const puedeVerTodo = accionHabilitada(currentUser, 'ficha.datos_personales', esGestion(currentUser?.role));
   const p = preceptor || {};
   const nombre = safe(p.name ?? p.nombre);
   const apellido = safe(p.apellido ?? p.lastname);
@@ -62,7 +64,15 @@ export default function PreceptorFicha({ open, onClose, preceptor }) {
   const titulo = `${apellido}, ${nombre}`.replace(/^, |, $/g, "");
 
   return (
-    <FichaLayout open={open} onClose={onClose} titulo={titulo || "Ficha del Preceptor"} subtitulo={email}>
+    <FichaLayout
+      open={open}
+      onClose={onClose}
+      titulo={titulo || "Ficha del Preceptor"}
+      subtitulo={email}
+      avatarId={p.id}
+      avatarVersion={p.avatar_version}
+      avatarFallback={initials(nombre, apellido)}
+    >
       {/* Encabezado: DNI / Email / Rol (DNI y rol solo gestión) */}
       <div className={card}>
         <div className="ficha-grid">

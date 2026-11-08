@@ -353,12 +353,12 @@ class PadronExcel
     {
         $s = $this->resumen;
         $s->getColumnDimension('A')->setWidth(34);
-        foreach (['B', 'C', 'D', 'E', 'F'] as $col) {
+        foreach (['B', 'C', 'D', 'E', 'F', 'G'] as $col) {
             $s->getColumnDimension($col)->setWidth(11);
         }
         $s->setShowGridlines(false);
 
-        $s->mergeCells('A1:F1');
+        $s->mergeCells('A1:G1');
         $s->setCellValue('A1', 'RESUMEN DEL PADRÓN');
         $s->getStyle('A1')->getFont()->setBold(true)->setSize(13)->getColor()->setARGB('FF1F4E79');
         $s->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -380,22 +380,22 @@ class PadronExcel
     private function tituloSeccion(int $fila, string $titulo): int
     {
         $s = $this->resumen;
-        $s->mergeCells("A{$fila}:F{$fila}");
+        $s->mergeCells("A{$fila}:G{$fila}");
         $s->setCellValue("A{$fila}", $titulo);
-        $estilo = $s->getStyle("A{$fila}:F{$fila}");
+        $estilo = $s->getStyle("A{$fila}:G{$fila}");
         $estilo->getFont()->setBold(true)->setSize(11)->getColor()->setARGB('FFFFFFFF');
         $estilo->getFill()->setFillType(Fill::FILL_SOLID)
             ->getStartColor()->setARGB(self::AZUL_ENCABEZADO);
         return $fila + 1;
     }
 
-    /** Cuántos alumnos hay por año y división, y cuántos son F / M / O. */
+    /** Cuántos alumnos hay por año y división: F / M / O, egresados e inactivos. */
     private function bloquePorCurso(array $alumnos, int $fila): int
     {
         $s = $this->resumen;
         $cabecera = $this->tituloSeccion($fila, 'Alumnos por curso');
 
-        foreach (['Curso', 'Total', 'F', 'M', 'O', 'Egresados'] as $i => $rotulo) {
+        foreach (['Curso', 'Total', 'F', 'M', 'O', 'Egresados', 'Inactivos'] as $i => $rotulo) {
             $col = Coordinate::stringFromColumnIndex($i + 1);
             $s->setCellValue($col . $cabecera, $rotulo);
             $estilo = $s->getStyle($col . $cabecera);
@@ -414,19 +414,20 @@ class PadronExcel
             $clave = sprintf('%02d|%s', $anio, $div);
             $grupos[$clave] ??= [
                 'rotulo' => $anio ? trim($anio . '° ' . $div) : 'Sin curso',
-                'total' => 0, 'F' => 0, 'M' => 0, 'O' => 0, 'egresados' => 0,
+                'total' => 0, 'F' => 0, 'M' => 0, 'O' => 0, 'egresados' => 0, 'inactivos' => 0,
             ];
             $g = &$grupos[$clave];
             $g['total']++;
             $genero = (string) ($a['genero'] ?? '');
             if (isset($g[$genero])) $g[$genero]++;
             if (strcasecmp((string) ($a['estado'] ?? ''), 'Egresado') === 0) $g['egresados']++;
+            if (strcasecmp((string) ($a['estado'] ?? ''), 'Inactivo') === 0) $g['inactivos']++;
             unset($g);
         }
         ksort($grupos);
 
         $fila = $cabecera + 1;
-        $totales = ['total' => 0, 'F' => 0, 'M' => 0, 'O' => 0, 'egresados' => 0];
+        $totales = ['total' => 0, 'F' => 0, 'M' => 0, 'O' => 0, 'egresados' => 0, 'inactivos' => 0];
         foreach ($grupos as $g) {
             $s->setCellValue('A' . $fila, $g['rotulo']);
             $fila = $this->numerosFila($fila, $g, $totales, $cabecera);
@@ -434,7 +435,7 @@ class PadronExcel
 
         $s->setCellValue('A' . $fila, 'TOTAL');
         $s->getStyle('A' . $fila)->getFont()->setBold(true);
-        foreach (['B' => 'total', 'C' => 'F', 'D' => 'M', 'E' => 'O', 'F' => 'egresados'] as $col => $clave) {
+        foreach (['B' => 'total', 'C' => 'F', 'D' => 'M', 'E' => 'O', 'F' => 'egresados', 'G' => 'inactivos'] as $col => $clave) {
             $s->setCellValue($col . $fila, (int) $totales[$clave]);
             $estilo = $s->getStyle($col . $fila);
             $estilo->getFont()->setBold(true);
@@ -445,11 +446,11 @@ class PadronExcel
         return $fila;
     }
 
-    /** Escribe B..F de una fila del resumen y acumula en $totales. */
+    /** Escribe B..G de una fila del resumen y acumula en $totales. */
     private function numerosFila(int $fila, array $datos, array &$totales, int $cabecera): int
     {
         $s = $this->resumen;
-        foreach (['B' => 'total', 'C' => 'F', 'D' => 'M', 'E' => 'O', 'F' => 'egresados'] as $col => $clave) {
+        foreach (['B' => 'total', 'C' => 'F', 'D' => 'M', 'E' => 'O', 'F' => 'egresados', 'G' => 'inactivos'] as $col => $clave) {
             $valor = (int) ($datos[$clave] ?? 0);
             $s->setCellValue($col . $fila, $valor);
             $s->getStyle($col . $fila)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -527,7 +528,7 @@ class PadronExcel
     private function bordesTabla(int $ultimaFila, int $primeraFila): void
     {
         if ($ultimaFila < $primeraFila) return;
-        $this->resumen->getStyle("A{$primeraFila}:F{$ultimaFila}")
+        $this->resumen->getStyle("A{$primeraFila}:G{$ultimaFila}")
             ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_HAIR)
             ->getColor()->setARGB(self::CELESTE_BORDE);
     }

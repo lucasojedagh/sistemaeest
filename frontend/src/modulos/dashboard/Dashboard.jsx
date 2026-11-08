@@ -4,18 +4,19 @@
 // ===============================
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiGet, apiPost, apiBlob, apiUpload } from "../../compartido/lib/api";
+import { apiGet, apiBlob, apiUpload } from "../../compartido/lib/api";
 import { cargarDivisiones } from "../../compartido/lib/divisiones";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users2, GraduationCap, BookOpen, Layers3,
   PieChart as PieIcon, BarChart3, AlertTriangle, Sparkles,
-  CheckCircle2, PauseCircle, UserCheck, UserPlus, RefreshCw, Send,
+  CheckCircle2, PauseCircle, UserCheck, UserPlus, RefreshCw,
   Download, Upload, ShieldCheck
 } from "lucide-react";
 import TareasFrecuentes from "./TareasFrecuentes";
 import AvisoNotasFinales from "./AvisoNotasFinales";
 import RevisionSistema from "./RevisionSistema";
+import { accionHabilitada } from "../../compartido/lib/permisos";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   PieChart, Pie, Cell, Legend, CartesianGrid
@@ -28,6 +29,10 @@ import { getCached, setCache as pgSetCache, clearCache } from "../../compartido/
 import useAvisoDeCambios from "../../compartido/hooks/useAvisoDeCambios";
 import { cursoLabel } from "../../compartido/lib/cursos";
 import "./Dashboard.css";
+
+// Mismo tope que valida el backend (BackupController::import, max:51200 KB).
+const MAX_RESPALDO_MB = 50;
+const MAX_RESPALDO_BYTES = MAX_RESPALDO_MB * 1048576;
 
 const PALETTE = ["#3b82f6", "#ec4899", "#22c55e", "#f59e0b", "#8b5cf6", "#f97316", "#06b6d4"];
 // Colores fijos del grafico de genero (Otro en gris)
@@ -58,7 +63,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const cached = getCached(DASH_CACHE_KEY);
 
-  const [mostrarAviso, pedirConfirmacion, avisoModal, , pedirDato, mostrarCarga] = useAviso();
+  const [mostrarAviso, pedirConfirmacion, avisoModal, , , mostrarCarga] = useAviso();
   const [confirmarContrasena, modalPwd] = usePasswordPrompt();
 
   const [resumen, setResumen] = useState(cached?.resumen || null);
@@ -145,7 +150,7 @@ const Dashboard = () => {
         conTope(cargarDivisiones().catch(() => null)),
         conTope(apiGet("/dashboard/top-performers", ctrl.signal).catch(() => null)),
         conTope(apiGet("/dashboard/preceptores", ctrl.signal).catch(() => null)),
-        conTope(apiGet("/materias/todas", ctrl.signal).catch(() => ({}))),
+        conTope(apiGet("/materias/todas", ctrl.signal).catch(() => null)),
       ]);
 
       const map = todas || {};
@@ -170,12 +175,16 @@ const Dashboard = () => {
       }
       if (todas !== null && todas !== undefined) {
         setMateriasPorAnio(map);
+      } else {
+        fallos.push("materias");
       }
       if (topPerf !== null && topPerf !== undefined) {
         setTopPerformers(topPerf);
       }
       if (preceptores !== null && preceptores !== undefined) {
         setPreceptores(preceptores || { total: 0, activos: 0 });
+      } else {
+        fallos.push("preceptores");
       }
       if (fallos.length > 0) {
         setError(`No se pudieron actualizar: ${fallos.join(", ")}. Se muestran los últimos datos guardados.`);
@@ -217,55 +226,6 @@ const Dashboard = () => {
       }
     } finally {
       clearTimeout(safetyTimer);
-    }
-  };
-
-  // ===== Enviar backup de la base de datos por email =====
-  const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||"").trim());
-  // Abre un modal para ingresar email y envia el backup del sistema
-  const sendBackupEmail = async () => {
-    const prev = (() => { try { return localStorage.getItem("backupEmail") || ""; } catch { return ""; } })();
-
-    const email = await pedirDato({
-      title: "Enviá el backup por email",
-      text: "Te enviamos un .zip con los JSON del backup.",
-      confirmText: "Enviar backup",
-      cancelText: "Cancelar",
-      input: {
-        type: "email",
-        placeholder: "tucorreo@colegio.edu.ar",
-        initial: prev,
-        validate: isValidEmail,
-        errorText: "Ingresá un email válido",
-      },
-    });
-    if (email == null) return;
-
-    // Envío de la base completa: exige contraseña (el servidor la valida).
-    if (!(await confirmarContrasena())) return;
-
-    try { localStorage.setItem("backupEmail", email); } catch { /* storage no disponible */ }
-
-    const cerrar = mostrarCarga({
-      title: "Generando backup…",
-      text: "Esto puede tardar unos segundos",
-    });
-
-    try {
-      await apiPost("/backups/sql/email", { email });
-      cerrar();
-      await mostrarAviso({
-        icon: "success",
-        title: "Backup enviado",
-        text: `Se envió la copia de la base a ${email}. Revisá tu correo.`,
-      });
-    } catch (e) {
-      cerrar();
-      await mostrarAviso({
-        icon: "error",
-        title: "No se pudo enviar el backup",
-        text: e?.message || "Intentá nuevamente.",
-      });
     }
   };
 
@@ -313,6 +273,18 @@ const Dashboard = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
+
+    // El tope lo valida el backend, pero se corta acá: subir 80 MB para que
+    // nginx los rechace a mitad de camino tarda minutos y no deja mensaje.
+    if (file.size > MAX_RESPALDO_BYTES) {
+      await mostrarAviso({
+        icon: "error",
+        title: "El respaldo es muy grande",
+        text: `Este archivo pesa ${(file.size / 1048576).toFixed(0)} MB y el sistema acepta respaldos de hasta ${MAX_RESPALDO_MB} MB. Pedile al administrador que suba ese límite.`,
+      });
+      return;
+    }
+
     const ok = await pedirConfirmacion({
       title: "¿Importar backup?",
       text: `Se reemplazará TODO el contenido de la base de datos con el archivo:\n${file.name} (${(file.size / 1024).toFixed(1)} KB)\n\nEsta acción no se puede deshacer.`,
@@ -524,7 +496,11 @@ const Dashboard = () => {
   const hasCache = lastTs != null;
   const { user } = useAuth();
   const userRole = (user?.role || '').toLowerCase();
-  const canBackup = ['admin', 'jefe_preceptores', 'prosecretaria'].includes(userRole);
+  // Bajar o reemplazar la base son dos casillas distintas del catálogo y el
+  // backend las reserva a la cuenta Admin (role:admin + Permisos::SOLO_ADMIN),
+  // así que ningún otro rol puede encenderlas marcando la caja.
+  const puedeDescargarBackup = accionHabilitada(user, 'backup.usar', userRole === 'admin');
+  const puedeRestaurarBackup = accionHabilitada(user, 'backup.restaurar', userRole === 'admin');
 
   const top = {
     top_students: topPerformers?.top_students ?? [],
@@ -552,52 +528,46 @@ const Dashboard = () => {
               </span>
             )}
 
-            {/* Enviar backup por email — solo admin y jefe_preceptores */}
-            {canBackup && (
+            {/* Respaldos: descargar o importar la base — solo el rol Admin */}
+            {(puedeDescargarBackup || puedeRestaurarBackup) && (
               <>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".sql,.txt"
-                  className="dash-hidden-input"
-                  onChange={handleImportFile}
-                />
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleDownloadBackup}
-                  className="dash-btn-backup"
-                  title="Descargar backup (.sql)"
-                >
-                  <span className="dash-btn-backup-icon">
-                    <Download size={16} />
-                  </span>
-                  <span className="dash-btn-backup-text">Descargar backup</span>
-                  <span className="dash-btn-backup-text-short">Backup</span>
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleImportBackup}
-                  className="dash-btn-backup"
-                  title="Importar backup (.sql)"
-                >
-                  <span className="dash-btn-backup-icon">
-                    <Upload size={16} />
-                  </span>
-                  <span className="dash-btn-backup-text">Importar backup</span>
-                  <span className="dash-btn-backup-text-short">Importar</span>
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  onClick={sendBackupEmail}
-                  className="dash-btn-backup"
-                  title="Enviar backup por email"
-                >
-                  <span className="dash-btn-backup-icon">
-                    <Send size={16} />
-                  </span>
-                  <span className="dash-btn-backup-text">Enviar backup</span>
-                  <span className="dash-btn-backup-text-short">Backup</span>
-                </motion.button>
+                {puedeRestaurarBackup && (
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".sql,.txt"
+                    className="dash-hidden-input"
+                    onChange={handleImportFile}
+                  />
+                )}
+                {puedeDescargarBackup && (
+                  <motion.button
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleDownloadBackup}
+                    className="dash-btn-backup"
+                    title="Descargar backup (.sql)"
+                  >
+                    <span className="dash-btn-backup-icon">
+                      <Download size={16} />
+                    </span>
+                    <span className="dash-btn-backup-text">Descargar backup</span>
+                    <span className="dash-btn-backup-text-short">Backup</span>
+                  </motion.button>
+                )}
+                {puedeRestaurarBackup && (
+                  <motion.button
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleImportBackup}
+                    className="dash-btn-backup"
+                    title={`Importar backup (.sql de hasta ${MAX_RESPALDO_MB} MB)`}
+                  >
+                    <span className="dash-btn-backup-icon">
+                      <Upload size={16} />
+                    </span>
+                    <span className="dash-btn-backup-text">Importar backup</span>
+                    <span className="dash-btn-backup-text-short">Importar</span>
+                  </motion.button>
+                )}
               </>
             )}
 

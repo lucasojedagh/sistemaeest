@@ -16,11 +16,16 @@ import "./ImportarAlumnosModal.css";
 // Componente: ImportarAlumnosModal
 // Proposito: dar de alta el padrón desde un Excel en dos pasos: primero se
 //            revisa el archivo (no escribe nada) y después se importa.
-//            Los alumnos que ya existen por DNI se omiten: nunca se pisan datos.
+//            Los alumnos que ya existen se omiten (por DNI, o por nombre y
+//            curso cuando el DNI está vacío): nunca se pisan datos.
 // Props:
 //   visible     - Si el modal está abierto.
 //   onClose     - Cerrar.
 //   onTerminado - Se llama cuando la importación escribió algo, para refrescar la lista.
+
+// Mismo tope que valida el backend (AlumnoImportadorController, max:20480 KB).
+const MAX_PLANILLA_MB = 20;
+const MAX_PLANILLA_BYTES = MAX_PLANILLA_MB * 1048576;
 
 const ETIQUETAS = {
   nueva: { texto: "Se da de alta", clase: "iam-ok" },
@@ -85,6 +90,13 @@ const ImportarAlumnosModal = ({ visible, onClose, onTerminado }) => {
 
   const elegirArchivo = (f) => {
     if (!f) return;
+    // El tope ya se avisa en pantalla; se corta acá para no subir 30 MB y
+    // enterarse recién cuando el server lo rechaza.
+    if (f.size > MAX_PLANILLA_BYTES) {
+      setArchivo(null);
+      setError(`La planilla pesa más de ${MAX_PLANILLA_MB} MB. Guardá solo las columnas y filas que se van a importar.`);
+      return;
+    }
     setArchivo(f);
     setPrevia(null);
     setResultado(null);
@@ -217,7 +229,7 @@ const ImportarAlumnosModal = ({ visible, onClose, onTerminado }) => {
                         {archivo ? archivo.name : "Elegí la planilla con los alumnos"}
                       </div>
                       <div className="iam-zona-nota">
-                        Formatos: .xlsx (recomendado), .xls o .ods. Máximo 20 MB.
+                        Formatos: .xlsx (recomendado), .xls o .ods. Máximo {MAX_PLANILLA_MB} MB.
                       </div>
                       <button
                         type="button"

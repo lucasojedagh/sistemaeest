@@ -50,4 +50,16 @@ class EnsureRoleTest extends TestCase
         $this->assertSame(401, $this->runMiddleware(null, ['admin']));
         $this->assertSame(403, $this->runMiddleware('admin', ['rol_inexistente']));
     }
+
+    public function test_el_rechazo_lo_lee_una_persona(): void
+    {
+        // La pantalla pone este texto en el toast tal cual llega: un "Forbidden"
+        // no le dice al preceptor qué le faltó.
+        $req = Request::create('/x', 'GET');
+        $req->setUserResolver(fn () => new User(['role' => 'preceptor']));
+        $cuerpo = (string) (new EnsureRole)->handle($req, fn () => response('ok'), 'admin')->getContent();
+
+        $this->assertStringNotContainsString('Forbidden', $cuerpo);
+        $this->assertStringContainsString('rango', $cuerpo);
+    }
 }

@@ -20,6 +20,7 @@ use App\Support\Descarga;
 use App\Support\LikeSearch;
 use App\Support\PadronExcel;
 use App\Support\SchoolYear;
+use App\Support\Texto;
 
 // Controlador para la gestion de alumnos.
 // Proporciona endpoints para listar, crear, actualizar, eliminar y egresar alumnos,
@@ -121,12 +122,13 @@ class AlumnoController extends Controller
 
     // Lista los alumnos con filtros opcionales por busqueda (q), anio, division y genero.
     // Incluye relaciones de direcciones, telefonos, recursadas e intensificaciones.
-    // GET /api/alumnos?q=&anio=&division=&genero=
+    // GET /api/alumnos?q=&anio=&division=&genero=&estado=
     public function index(Request $req)
     {
         $q        = trim((string) $req->query('q', ''));
         $anio     = $req->integer('anio');
         $division = $req->query('division');
+        $estado   = $this->estadoFiltro($req);
 
         $generoRaw = (string) $req->query('genero', '');
         $gUp = strtoupper($generoRaw);
@@ -154,6 +156,7 @@ class AlumnoController extends Controller
         if ($genero && $genero !== 'TODOS') $query->where('genero', $genero);
         if ($anio)                         $query->where('anio', $anio);
         if ($division)                     $query->where('division', strtoupper($division));
+        if ($estado)                       $query->where('estado', $estado);
 
         $rows = $query->orderBy('apellido')->orderBy('nombre')
             ->paginate(\App\Support\Paginacion::porPagina($req, 100, 2000))
@@ -423,13 +426,14 @@ class AlumnoController extends Controller
 
             $estadoReq = trim((string)$req->input('estado', $alumno->estado ?? 'Activo'));
             if ($estadoReq === '') $estadoReq = 'Activo';
-            // El estado solo admite Activo o Egresado (insensible a mayúsculas).
-            // Cualquier otro valor se rechaza en criollo en vez de guardarse.
+            // El estado solo admite los tres valores del dominio (insensible a
+            // mayúsculas). Cualquier otro valor se rechaza en criollo en vez de
+            // guardarse.
             $estadoReq = ucfirst(strtolower($estadoReq));
-            if (!in_array($estadoReq, ['Activo', 'Egresado'], true)) {
+            if (!in_array($estadoReq, Alumno::ESTADOS, true)) {
                 return response()->json([
-                    'message' => 'El estado debe ser Activo o Egresado.',
-                    'errors'  => ['estado' => ['El estado debe ser Activo o Egresado.']],
+                    'message' => 'El estado debe ser Activo, Egresado o Inactivo.',
+                    'errors'  => ['estado' => ['El estado debe ser Activo, Egresado o Inactivo.']],
                 ], 422);
             }
 
@@ -458,10 +462,11 @@ class AlumnoController extends Controller
                 'intensificacion' => $alumno->intensificaciones()->orderBy('id')->get(['anio', 'division', 'materia_id', 'materia_nombre'])->toArray(),
             ];
 
-            // Si se marca Egresado sin datos de egreso, se completan desde el curso
-            // que se está guardando (igual que egresar()): evita filas a medio
-            // egresar que las promociones leerían distinto.
-            if ($estadoReq === 'Egresado' && empty($alumno->egreso_year)) {
+            // Si se marca la baja (Egresado o Inactivo) sin datos de salida, se
+            // completan desde el curso que se está guardando (igual que egresar()
+            // e inactivar()): evita filas a medio egresar que las promociones
+            // leerían distinto.
+            if (Alumno::estaDeBaja($estadoReq) && empty($alumno->egreso_year)) {
                 $alumno->egreso_year = (int) date('Y');
                 $alumno->egreso_anio = $data['anio'] ?? $alumno->anio;
                 $alumno->egreso_division = $data['division'] ?? $alumno->division;
@@ -534,9 +539,10 @@ class AlumnoController extends Controller
             $alumno->intensificaciones()->delete();
             foreach ($int as $r) $alumno->intensificaciones()->create($r);
 
-            // Sincroniza los campos de egreso según el estado resultante.
-            if (strcasecmp($alumno->estado, 'Egresado') === 0) {
-                // Si pasa a egresado, registra el año lectivo, anio y division desde los que egresa.
+            // Sincroniza los campos de salida según el estado resultante.
+            if (Alumno::estaDeBaja($alumno->estado)) {
+                // Egresado e Inactivo comparten egreso_year/egreso_anio/
+                // egreso_division: recuerdan desde qué curso dejaron de cursar.
                 if (empty($alumno->egreso_year)) {
                     $alumno->egreso_year     = (int) ($req->input('anioLectivo') ?? date('Y'));
                 }
@@ -544,7 +550,7 @@ class AlumnoController extends Controller
                 $alumno->egreso_division = $alumno->division;
                 $alumno->save();
             } else {
-                // Si ya no está egresado, limpia los campos de egreso.
+                // Si vuelve a estar en cursada, limpia los campos de salida.
                 $alumno->egreso_year     = null;
                 $alumno->egreso_anio     = null;
                 $alumno->egreso_division = null;
@@ -606,7 +612,8 @@ class AlumnoController extends Controller
 
         // Borrar la fila arrastra por cascada todo lo que el alumno generó en la
         // escuela. Ese historico no se elimina: para retirar a un alumno con
-        // datos esta la etiqueta Egresado, que solo marca y no borra nada.
+        // datos esta la etiqueta de baja (Egresado o Inactivo), que solo marca
+        // y no borra nada.
         $historial = $this->contarHistorialAlumno((int) $alumno->id);
         if (array_sum($historial) > 0) {
             return response()->json([
@@ -661,7 +668,7 @@ class AlumnoController extends Controller
 
         return $alumno->apellido . ', ' . $alumno->nombre . ' tiene ' . $resumen
             . ' guardados y el sistema no elimina ese histórico.'
-            . ' Si el alumno ya no cursa, ponele la etiqueta Egresado: sus datos quedan intactos.';
+            . ' Si el alumno ya no cursa, ponele la etiqueta Egresado o Inactivo: sus datos quedan intactos.';
     }
 
     // Marca a un alumno como egresado, registrando el anio lectivo, el anio y la division desde la que egresa.
@@ -693,6 +700,36 @@ class AlumnoController extends Controller
             'egreso_year'     => $alumno->egreso_year,
             'egreso_anio'     => $alumno->egreso_anio,
             'egreso_division' => $alumno->egreso_division,
+            // La baja se sola escribió la fila: la ficha que la disparó tiene que
+            // quedar con esa versión, si no el siguiente Guardar choca con ella.
+            'version'         => (int) ($alumno->updated_at?->getTimestamp() ?? 0),
+        ]);
+    }
+
+    /* ===================== Inactivar ===================== */
+    // Marca a un alumno como inactivo: abandonó, no terminó la escuela. Sale de
+    // la cursada igual que un egresado (asistencia, promoción, coberturas) y
+    // conserva todos sus datos. A diferencia de egresar(), no exige estar en el
+    // último año: el abandono puede pasar en cualquier curso.
+    public function inactivar(Request $req, Alumno $alumno)
+    {
+        $anioLectivo = (int) ($req->input('anioLectivo') ?? date('Y'));
+
+        $alumno->estado          = 'Inactivo';
+        $alumno->egreso_year     = $anioLectivo;
+        $alumno->egreso_anio     = $alumno->anio;
+        $alumno->egreso_division = $alumno->division;
+        $alumno->save();
+
+        ActivityLogger::log($req, 'Inactivó alumno ' . $alumno->apellido . ', ' . $alumno->nombre, 'alumno.inactivar', 'Alumno', $alumno->id);
+
+        return response()->json([
+            'id'              => $alumno->id,
+            'estado'          => $alumno->estado,
+            'egreso_year'     => $alumno->egreso_year,
+            'egreso_anio'     => $alumno->egreso_anio,
+            'egreso_division' => $alumno->egreso_division,
+            'version'         => (int) ($alumno->updated_at?->getTimestamp() ?? 0),
         ]);
     }
 
@@ -708,26 +745,27 @@ class AlumnoController extends Controller
         $input = $req->all();
         // DNI vacío (string '') equivale a sin DNI: evita falsos "duplicado"
         // por unique cuando varios alumnos no tienen DNI cargado.
-        if (array_key_exists('dni', $input) && trim((string) $input['dni']) === '') {
+        if (array_key_exists('dni', $input) && Texto::plano($input['dni']) === '') {
             $input['dni'] = null;
         }
         // Nacionalidad y Nro. de matrícula vacío = sin dato (nunca un string con
         // espacios), y se guarda tal como se escribe pero sin sobrantes.
         foreach (['nacionalidad', 'matricula'] as $campoTexto) {
             if (!array_key_exists($campoTexto, $input)) continue;
-            $t = trim((string) $input[$campoTexto]);
+            $t = Texto::plano($input[$campoTexto]);
             $input[$campoTexto] = $t === '' ? null : $t;
         }
         // El mail se guarda sin espacios y en minúsculas: "Juan@Cooperadora.Ar" y
         // "juan@cooperadora.ar" son la misma casilla y no pueden ser dos registros.
         if (array_key_exists('email', $input)) {
-            $t = trim(preg_replace('/\s+/u', '', (string) $input['email']) ?? '');
+            $t = preg_replace('/\s+/u', '', Texto::plano($input['email'])) ?? '';
             $input['email'] = $t === '' ? null : mb_strtolower($t, 'UTF-8');
         }
         if (isset($input['responsables']) && is_array($input['responsables'])) {
             foreach ($input['responsables'] as &$r) {
-                $p = isset($r['parentesco']) ? trim((string)$r['parentesco']) : '';
-                $v = isset($r['vinculo']) ? trim((string)$r['vinculo']) : '';
+                if (!is_array($r)) continue;
+                $p = isset($r['parentesco']) ? Texto::plano($r['parentesco']) : '';
+                $v = isset($r['vinculo']) ? Texto::plano($r['vinculo']) : '';
                 if ($p === '' && $v !== '') $r['parentesco'] = $v;
             }
             unset($r);
@@ -792,7 +830,7 @@ class AlumnoController extends Controller
         // división debe pertenecer a las activas del año elegido
         $validator->after(function ($v) use ($input) {
             $anio = (int) ($input['anio'] ?? 0);
-            $division = strtoupper((string) ($input['division'] ?? ''));
+            $division = strtoupper(Texto::plano($input['division'] ?? ''));
             if ($anio > 0 && $division !== '') {
                 $valid = $this->validDivisionsForYear($anio);
                 if (!empty($valid) && !in_array($division, $valid, true)) {
@@ -804,7 +842,7 @@ class AlumnoController extends Controller
                 $items = (array) ($input[$campo] ?? []);
                 foreach ($items as $idx => $r) {
                     $a = (int) ($r['anio'] ?? 0);
-                    $d = strtoupper((string) ($r['division'] ?? ''));
+                    $d = strtoupper(Texto::plano($r['division'] ?? ''));
                     if ($a > 0 && $d !== '') {
                         $valid = $this->validDivisionsForYear($a);
                         if (!empty($valid) && !in_array($d, $valid, true)) {
@@ -859,7 +897,7 @@ class AlumnoController extends Controller
     }
 
     // Descarga el padrón en Excel (.xlsx) con los filtros que se están viendo.
-    // GET /api/alumnos/padron/excel?q=&anio=&division=&genero=&especialidad=&orden=
+    // GET /api/alumnos/padron/excel?q=&anio=&division=&genero=&especialidad=&estado=&orden=
     //
     // Se reemplazó la antigua descarga en CSV: el CSV traía 8 columnas sueltas,
     // sin formato y con los acentos al azar según el programa que lo abriera.
@@ -875,6 +913,7 @@ class AlumnoController extends Controller
         $mapG = ['FEMENINO' => 'F', 'MASCULINO' => 'M', 'OTROS' => 'O', 'OTRO' => 'O'];
         $genero = $mapG[$generoRaw] ?? $generoRaw;
         $especialidad = strtolower(trim((string) $req->query('especialidad', '')));
+        $estado = $this->estadoFiltro($req);
         $orden  = (string) $req->query('orden', 'apellido-az');
 
         $query = Alumno::query()
@@ -902,6 +941,7 @@ class AlumnoController extends Controller
         if ($especialidad !== '' && $especialidad !== 'todos') {
             $query->where('especialidad', $especialidad);
         }
+        if ($estado) $query->where('estado', $estado);
 
         // Mismos criterios de orden que el selector de la pantalla.
         match ($orden) {
@@ -924,7 +964,7 @@ class AlumnoController extends Controller
             'escuela'      => config('planilla.escuela'),
             'titulo'       => 'PADRÓN DE ALUMNOS',
             'ciclo'        => now()->year,
-            'filtros'      => $this->filtrosParaTitulo($q, $anio, $division, $genero, $especialidad),
+            'filtros'      => $this->filtrosParaTitulo($q, $anio, $division, $genero, $especialidad, $estado ?? ''),
         ];
 
         $excel = new PadronExcel();
@@ -951,7 +991,7 @@ class AlumnoController extends Controller
     }
 
     /** Texto legible de los filtros, para que el archivo diga cómo se sacó. */
-    private function filtrosParaTitulo(string $q, int $anio, string $division, string $genero, string $especialidad): string
+    private function filtrosParaTitulo(string $q, int $anio, string $division, string $genero, string $especialidad, string $estado = ''): string
     {
         $partes = [];
         if ($anio || $division !== '') {
@@ -962,8 +1002,21 @@ class AlumnoController extends Controller
         if ($especialidad !== '' && $especialidad !== 'todos') {
             $partes[] = 'Especialidad ' . (Alumno::ESPECIALIDADES[$especialidad] ?? $especialidad);
         }
+        if ($estado !== '') $partes[] = 'Estado ' . $estado;
         if ($q !== '') $partes[] = 'Búsqueda "' . $q . '"';
         return implode(' · ', $partes);
+    }
+
+    /**
+     * Estado pedido en el query string, normalizado contra los estados del dominio.
+     * Devuelve null cuando no filtra nada: sin parámetro, 'todos' o un valor inventado.
+     */
+    private function estadoFiltro(Request $req): ?string
+    {
+        $raw = trim((string) $req->query('estado', ''));
+        if ($raw === '' || strtolower($raw) === 'todos') return null;
+        $norm = ucfirst(strtolower($raw));
+        return in_array($norm, Alumno::ESTADOS, true) ? $norm : null;
     }
 
     /**
@@ -1057,6 +1110,7 @@ class AlumnoController extends Controller
         if (!$user) {
             abort(401, 'No autorizado. Iniciá sesión para ver el listado.');
         }
+        $this->assertPuedeImprimir($req);
 
         $anio     = $req->integer('anio');
         $division = strtoupper(trim((string) $req->query('division', '')));
@@ -1068,8 +1122,11 @@ class AlumnoController extends Controller
         $req->setUserResolver(fn() => $user);
         $this->assertCanReadCurso($req, $anio, $division ?: null);
 
+        // Lista para firmar: solo alumnos que cursan. Un egresado o un inactivo
+        // sigue ligado al curso por su historial, pero no es alguien del curso.
         $alumnos = Alumno::where('anio', $anio)
             ->when($division, fn ($q) => $q->where('division', $division))
+            ->cursando()
             ->orderBy('apellido')->orderBy('nombre')
             ->get(['id', 'apellido', 'nombre', 'dni', 'estado']);
 

@@ -477,6 +477,20 @@ class AlumnoHorarioController extends Controller
             return response()->json(['message' => 'El campo entries debe ser un array'], 422);
         }
 
+        // Cada entrada tiene que ser un objeto con día y hora. Un pedido armado
+        // fuera de la pantalla puede mandar una lista de texto o de nulos, y ahí
+        // la lectura de 'bloque' cortaba el guardado con un error de PHP en vez
+        // de avisar que el formato no sirve. Se frena antes de tocar la base
+        // para que no quede medio horario guardado.
+        foreach ($entries as $e) {
+            if (!is_array($e)) {
+                return response()->json([
+                    'message' => 'Las entradas del horario tienen que ser una lista de filas, cada una con su día y su hora.',
+                ], 422);
+            }
+        }
+        $entries = array_values($entries);
+
         $alumno = DB::table('alumnos')->where('id', $alumnoId)->first();
         if (!$alumno) {
             return response()->json(['message' => 'Alumno no encontrado'], 404);
@@ -537,7 +551,7 @@ class AlumnoHorarioController extends Controller
                     $materiaId     = (int)$materiaIdRaw;
                     $materiaNombre = DB::table('materias')->where('id', $materiaId)->value('nombre');
                 } else {
-                    $materiaNombre = trim((string)$materiaRaw);
+                    $materiaNombre = \App\Support\Texto::plano($materiaRaw);
                     if ($materiaNombre !== '') {
                         // Primero la materia del año del alumno (desempata homónimas
                         // por especialidad del curso); si no hay, se acepta cualquier

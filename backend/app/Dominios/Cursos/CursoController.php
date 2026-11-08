@@ -11,6 +11,7 @@ use Illuminate\Validation\Rule;
 use App\Support\ActivityLogger;
 use App\Support\AuthorizesScope;
 use App\Support\SchoolYear;
+use App\Support\Texto;
 
 // Controlador para la gestion de cursos.
 // Proporciona endpoints CRUD para listar, crear, actualizar y eliminar cursos,
@@ -46,7 +47,7 @@ class CursoController extends Controller
         // Normalizamos división a MAYÚSCULA antes de validar
         $req = $request->all();
         if (isset($req['division'])) {
-            $req['division'] = strtoupper(trim((string) $req['division']));
+            $req['division'] = strtoupper(Texto::plano($req['division']));
             $request->merge(['division' => $req['division']]);
         }
 
@@ -83,7 +84,7 @@ class CursoController extends Controller
     {
         // normalizamos división si llega (aunque en PATCH actual no se permite cambiarla)
         if ($request->has('division')) {
-            $request->merge(['division' => strtoupper(trim((string)$request->division))]);
+            $request->merge(['division' => strtoupper(Texto::plano($request->division))]);
         }
 
         $data = $request->validate([

@@ -143,8 +143,32 @@ class DivisionController extends Controller
         $desired   = [];
 
         foreach ($body as $k => $divs) {
-            $anio = (int) $k;
-            if ($anio <= 0) continue;
+            $clave = (string) $k;
+
+            // "_detalles" es el motivo que lee el historial, no un año.
+            if (str_starts_with($clave, '_')) {
+                continue;
+            }
+
+            // Un año que no es número tampoco puede pasar de largo: antes el
+            // (int) lo aplastaba a 0, el continue lo descartaba y la pantalla
+            // recibía un 200 creyendo que había guardado algo.
+            if (!preg_match('/^\d+$/', $clave) || (int) $clave <= 0) {
+                return response()->json(
+                    ['message' => '«' . $clave . '» no es un año válido. Se espera {año:[división,...]} con años del 1 al ' . \App\Support\SchoolYear::LIMITE . '.'],
+                    422
+                );
+            }
+            $anio = (int) $clave;
+
+            // Mismo tope que habilitar años y promocionar: sin esto un {"99":["1"]}
+            // creaba el curso y el parámetro del año 99 y los dejaba activos.
+            if ($anio > \App\Support\SchoolYear::LIMITE) {
+                return response()->json(
+                    ['message' => 'El año ' . $anio . ' está fuera de rango (1 a ' . \App\Support\SchoolYear::LIMITE . ').'],
+                    422
+                );
+            }
 
             $list = is_array($divs) ? $divs : [];
             $list = array_map(fn($d) => strtoupper(trim((string)$d)), $list);

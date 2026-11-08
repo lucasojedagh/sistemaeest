@@ -44,7 +44,9 @@ class InventarioPermisosTest extends TestCase
             } elseif (is_string($where) && str_contains($where, '[a-zA-Z]')) {
                 $opciones[$i] = ['{d}', '{n}'];
             } else {
-                $opciones[$i] = ['{n}', '{d}'];
+                // El mapa también puede usar el nombre del parámetro como token
+                // (ej: "admin/roles/{rol}"), no solo {n} o {d}.
+                $opciones[$i] = ['{n}', '{d}', '{' . strtolower($nombre) . '}'];
             }
         }
 

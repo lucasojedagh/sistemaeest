@@ -22,4 +22,11 @@ class SchoolYear
     {
         return 1;
     }
+
+    /**
+     * Tope duro del sistema: habilitar años y promocionar ya lo validan en 12.
+     * Sin él, el reemplazo de divisiones creaba cursos para años inexistentes
+     * (por ejemplo 99) y los dejaba activos en toda la aplicación.
+     */
+    public const LIMITE = 12;
 }

@@ -88,6 +88,10 @@ cron— está en [`docs/DESPLEGUE-LINUX.md`](docs/DESPLEGUE-LINUX.md).
 | `instalar-cron.sh` | Agenda (idempotente) el volcado nocturno de la base y el `schedule:run` de Laravel, que es lo que limpia `storage/app/backups` |
 | `respaldar-bd.sh` | El volcado en sí: `mysqldump` dentro del contenedor + gzip + verificación + retención. También a mano antes de un cambio riesgoso |
 | `servidor-publicacion.js` | Sirve el `dist` del build con el mismo encaminado que va a tener en el server, para probarlo localmente |
+| `verificar-rutas-frontend.js` | Cruza cada llamado de la pantalla (`apiGet/apiPost/…`) contra `php artisan route:list` y lista los pedidos que no tienen ruta en la API. Con `--reves` además muestra los endpoints que la pantalla no usa |
+| `exportar-migracion.sh` | Arma el `.tar.gz` para pasar los datos a otro servidor: base completa + documentos y fotos subidos + manifiesto (filas y checksum por tabla, sha256). Anda desde Laragon o desde un server Docker (`--local` / `--docker`) |
+| `restaurar-migracion.sh` | Del lado del server: verifica el sha256 del paquete, respalda la base destino si ya tiene datos antes de pisar, importa, restaura los archivos con los permisos de adentro del contenedor y vuelve a contar y comparar el checksum de cada tabla contra el origen |
+| `generar-sql.sh` | Deja UN solo `.sql` con esquema + datos, para pegarlo en phpMyAdmin/HeidiSQL o cargarlo con `mysql <`. Con `--probar` lo carga en una base auxiliar y compara el checksum de las 31 tablas contra la real. El archivo queda en `backups/` (ignorado por git) y **no trae los documentos subidos**: esos van aparte |
 | `detener.ps1` / `detener.sh` | Apagan los contenedores (con `--volumenes` además **borra la base**: pide confirmación escrita) |
 | `crear-base-de-datos-desde-cero.ps1` | BORRA y recrea la BD `sistema_escuela` + seeders (guarda backup en `backups/`) |
 | `crear-base-de-datos-desde-cero.sh` | Lo mismo, para Linux/Git Bash |

@@ -13,13 +13,6 @@ const suscriptores = new Set();
 
 const claveDe = (id, version) => `${id}@${version}`;
 
-/** Foto ya descargada para esa versión exacta, o null. */
-export function avatarSrc(id, version) {
-  if (!id || !version) return null;
-  const k = claveDe(id, version);
-  return claves.has(k) ? claves.get(k) : null;
-}
-
 function notificar() {
   for (const f of Array.from(suscriptores)) f();
 }
@@ -28,7 +21,7 @@ let encola = [];
 let temporizador = null;
 
 /** Pide la foto (o la reused si ya bajó). Resuelve null si no hay. */
-export function pedirAvatar(id, version) {
+function pedirAvatar(id, version) {
   const k = claveDe(id, version);
   if (claves.has(k)) return Promise.resolve(claves.get(k));
   if (enVuelo.has(k)) return enVuelo.get(k);
@@ -73,6 +66,14 @@ async function volar() {
       const foto = datos?.[String(id)];
       const src = foto?.src ?? null;
       claves.set(k, src);
+      // La pantalla puede pedir la versión de una foto que ya no existe en el
+      // servidor (se borra al subir la siguiente): el servidor responde la
+      // actual, así que se guarda también bajo la versión que realmente trajo.
+      // Sin eso, cada pantalla que recuerde la versión vieja volvería a pedir
+      // los mismos bytes.
+      if (foto?.v && String(foto.v) !== String(version)) {
+        claves.set(claveDe(id, foto.v), src);
+      }
       res(src);
     }
     notificar();
@@ -85,12 +86,6 @@ export function limpiarAvatares() {
   enVuelo.clear();
   encola = [];
   notificar();
-}
-
-/** Descarta la copia de una foto para que se vuelva a pedir (tras subirla). */
-export function invalidarAvatar(id, version) {
-  claves.delete(claveDe(id, version));
-  enVuelo.delete(claveDe(id, version));
 }
 
 /** Fuente de la <img>: null mientras no está, así el llamador muestra iniciales. */

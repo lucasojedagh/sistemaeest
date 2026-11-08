@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
  *
  * Tabla: alumnos
  * Contiene los datos personales, academicos (anio, division, grupo),
- * estado (Activo/Egresado), indicadores de inclusion (PPI, AE) e
+ * estado (Activo / Egresado / Inactivo), indicadores de inclusion (PPI, AE) e
  * informacion de egreso.
  */
 class Alumno extends Model
@@ -31,7 +31,7 @@ class Alumno extends Model
         'anio',
         'division',
         'grupo',
-        'estado',              // Activo | Egresado (u otros estados)
+        'estado',              // Activo | Egresado | Inactivo (ver self::ESTADOS)
         'observaciones',
 
         // banderas
@@ -112,6 +112,24 @@ class Alumno extends Model
         'quimica'         => 'Técnico Químico',
     ];
 
+    /**
+     * Estados posibles de la ficha. Inactivo es el alumno que abandonó: no
+     * terminó la escuela, pero deja de cursar igual que un egresado.
+     */
+    public const ESTADOS = ['Activo', 'Egresado', 'Inactivo'];
+
+    /**
+     * Estados que sacan al alumno de la cursada sin borrarlo: ya no aparece en
+     * asistencia, notas ni promociones, pero sus datos quedan intactos en la base.
+     */
+    public const ESTADOS_BAJA = ['Egresado', 'Inactivo'];
+
+    /** true si el estado separa al alumno de la cursada (egresado o inactivo). */
+    public static function estaDeBaja(?string $estado): bool
+    {
+        return in_array(ucfirst(strtolower(trim((string) $estado))), self::ESTADOS_BAJA, true);
+    }
+
     /** Accesor: etiqueta legible de la especialidad */
     public function getEspecialidadLabelAttribute(): ?string
     {
@@ -123,15 +141,21 @@ class Alumno extends Model
 
     /**
      * Mutator: normaliza el genero a una unica letra (F, M, O).
-     * Segunda cerradura: cualquier otro valor queda en null en vez de
-     * guardarse tal cual (la validación ya solo admite F/M/O al crear/editar).
+     * Segunda cerradura: cualquier otro valor queda vacío en vez de guardarse
+     * tal cual (la validación ya solo admite F/M/O al crear/editar).
+     *
+     * Se guarda cadena vacía y no null: la columna genero es NOT NULL, así que
+     * un null (el sexo de una hoja del padrón que no se entendió) convertía el
+     * INSERT en un error 500 y tiraba abajo la carga de los 1200 alumnos de un
+     * golpe. Vacío significa "sin dato" y el panel lo muestra en su propia
+     * agrupación.
      */
     public function setGeneroAttribute($value): void
     {
         $v = strtoupper(trim((string) $value));
         $map = ['FEMENINO' => 'F', 'MASCULINO' => 'M', 'OTROS' => 'O', 'OTRO' => 'O'];
         $letra = $map[$v] ?? $v;
-        $this->attributes['genero'] = in_array($letra, ['F', 'M', 'O'], true) ? $letra : null;
+        $this->attributes['genero'] = in_array($letra, ['F', 'M', 'O'], true) ? $letra : '';
     }
 
     /** Mutator: normaliza la division a mayuscula y un solo caracter */
@@ -162,16 +186,22 @@ class Alumno extends Model
 
     /* ----------------------------- Scopes --------------------------- */
 
-    /** Scope: filita solo alumnos activos (no egresados) */
-    public function scopeActivos($q)
+    /** Scope: solo alumnos que cursan (excluye egresados e inactivos) */
+    public function scopeCursando($q)
     {
-        return $q->where('estado', '!=', 'Egresado');
+        return $q->whereNotIn('estado', self::ESTADOS_BAJA);
     }
 
     /** Scope: filtra solo alumnos egresados */
     public function scopeEgresados($q)
     {
         return $q->where('estado', 'Egresado');
+    }
+
+    /** Scope: filtra solo alumnos inactivos (abandono) */
+    public function scopeInactivos($q)
+    {
+        return $q->where('estado', 'Inactivo');
     }
 
     /** Scope: filtra alumnos por anio y division opcional */

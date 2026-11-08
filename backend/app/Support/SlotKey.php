@@ -52,7 +52,7 @@ final class SlotKey
         }
 
         // 2) "hN"
-        $str = (string) $value;
+        $str = Texto::plano($value);
         if (preg_match('/^h(\d+)$/i', $str, $m)) {
             $n = max(1, (int) $m[1]);
             return 'h' . $n;

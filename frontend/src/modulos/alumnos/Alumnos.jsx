@@ -32,7 +32,7 @@ import { coincideBusqueda, coincideDni } from "../../compartido/lib/busqueda";
 import { ORDENES, ORDEN_DEFAULT, ordenarPersonas, leerOrden, guardarOrden } from "../../compartido/lib/orden";
 import { mensajeAmable } from "../../compartido/lib/errores";
 import { esGestion } from "../auth/roles";
-import { puede } from "../../compartido/lib/permisos";
+import { accionHabilitada, alcanceEditar } from "../../compartido/lib/permisos";
 import { bloquearScroll } from "../../compartido/lib/lockScroll";
 import "./Alumnos.css";
 import {
@@ -43,6 +43,7 @@ import {
   ESPECIALIDADES,
   especialidadLabel,
 } from "../../compartido/lib/cursos";
+import { estadoNormalizado } from "../../compartido/lib/estadosAlumno";
 
 function useDebounce(value, delay = 180) {
   const [v, setV] = useState(value);
@@ -57,6 +58,15 @@ function useDebounce(value, delay = 180) {
 const buildCursosDisponibles = (mapa) => {
   return buildCursosDisponiblesFromMap(mapa);
 };
+
+// Filtro por estado: los tres del dominio, más "todos" para no filtrar.
+const ESTADOS_FILTRO = [
+  { value: 'todos',     label: 'Todos' },
+  { value: 'Activo',    label: 'Activos' },
+  { value: 'Inactivo',  label: 'Inactivos' },
+  { value: 'Egresado',  label: 'Egresados' },
+];
+const ESTADO_DEFAULT = 'todos';
 
 // Componente principal de la pagina de Alumnos
 const Alumnos = () => {
@@ -73,17 +83,43 @@ const Alumnos = () => {
   const [ambitoListo, setAmbitoListo] = useState(
     () => !getCached('alumnos/lista') || !!getCached('ambito')
   );
-  // Preceptor puede editar solo alumnos de sus cursos asignados
-  const puedeEditarAlumno = useCallback((alumno) => {
+  // Acciones sobre UN alumno. Primero decide la casilla del catálogo en
+  // "Roles y permisos" (que manda sola cuando el rol tiene lista propia, sea
+  // personalizado o de sistema editado); sin lista, rige la regla de siempre del
+  // rango. Después corta el alcance de escritura: 'asignados' deja actuar solo
+  // sobre los cursos del rol y 'ninguno' apaga la acción por completo.
+  const accionSobreAlumno = useCallback((alumno, clave, segunRango) => {
     if (!user) return false;
-    if (esGestion(user.role)) return true;
-    if (user.role === 'preceptor') {
-      // Se usa la etiqueta del curso ("1ro 1ra"), mismo formato que el filtro de ambito:
-      // el objeto normalizado del alumno no tiene anio/division numericos directos.
+    if (!accionHabilitada(user, clave, segunRango)) return false;
+    const alcance = alcanceEditar(user, 'alumnos');
+    if (alcance === 'ninguno') return false;
+    if (alcance === 'asignados') {
+      // Se usa la etiqueta del curso ("1ro 1ra"), mismo formato que el filtro de
+      // ambito: el objeto normalizado del alumno no tiene anio/division numericos.
       return cursoEnAsignaciones(alumno?.anio, ambito?.asignaciones);
     }
-    return false;
+    return true;
   }, [user, ambito]);
+  const puedeEditarAlumno = useCallback(
+    (alumno) => accionSobreAlumno(alumno, 'alumnos.editar', esGestion(user?.role) || user?.role === 'preceptor'),
+    [accionSobreAlumno, user]
+  );
+  const puedeEgresarAlumno = useCallback(
+    (alumno) => accionSobreAlumno(alumno, 'alumnos.egresar', esGestion(user?.role)),
+    [accionSobreAlumno, user]
+  );
+  const puedeInactivarAlumno = useCallback(
+    (alumno) => accionSobreAlumno(alumno, 'alumnos.inactivar', esGestion(user?.role)),
+    [accionSobreAlumno, user]
+  );
+  const puedeEliminarAlumno = useCallback(
+    (alumno) => accionSobreAlumno(alumno, 'alumnos.eliminar', esGestion(user?.role)),
+    [accionSobreAlumno, user]
+  );
+  const puedeHorarioAlumno = useCallback(
+    (alumno) => accionSobreAlumno(alumno, 'alumnos.horario', esGestion(user?.role) || user?.role === 'preceptor'),
+    [accionSobreAlumno, user]
+  );
   const [searchParams] = useSearchParams();
   const paramAnio = searchParams.get('anio');
   const paramDivision = searchParams.get('division');
@@ -101,6 +137,7 @@ const Alumnos = () => {
   const [filtroAnio, setFiltroAnio]     = useState(initialFiltro);
   const [filtroGenero, setFiltroGenero] = useState('todos');
   const [filtroEspecialidad, setFiltroEspecialidad] = useState('todos');
+  const [filtroEstado, setFiltroEstado] = useState(ESTADO_DEFAULT);
   const [busqueda, setBusqueda]         = useState(paramBuscar || '');
   const busquedaDebounced = useDebounce(busqueda, 180);
   // Orden de la lista (se recuerda por pantalla).
@@ -114,13 +151,23 @@ const Alumnos = () => {
 
 
   const [mostrarModal, setMostrarModal]   = useState(false);
-  // Alta masiva desde Excel: la ofrece sólo la gestión (mismo alcance que el backend).
-  const puedeImportar = !!user && esGestion(user.role) && puede(user, 'alumnos.importar');
+  // Alta de un alumno: la casilla "Crear alumnos". Sin lista propia manda el rango
+  // (la gestión y el preceptor pueden, el profesor no).
+  const puedeCrearAlumno = !!user && accionHabilitada(
+    user,
+    'alumnos.crear',
+    esGestion(role) || role === 'preceptor'
+  );
+  // Alta masiva desde Excel: la ofrece la casilla "Importar alumnos desde Excel".
+  const puedeImportar = !!user && accionHabilitada(user, 'alumnos.importar', esGestion(user.role));
+  // Padrón en Excel: botón "Descargar lista" = casilla "Descargar el padrón en Excel".
+  const puedePadron = !!user && accionHabilitada(user, 'alumnos.padron', true);
   const [mostrarImportar, setMostrarImportar] = useState(false);
-  // Los atajos ("Inscribir un alumno") llegan con ?agregar=1: abre el modal directo.
+  // Los atajos ("Inscribir un alumno") llegan con ?agregar=1: abre el modal directo,
+  // pero solo si el rol tiene la alta habilitada.
   useEffect(() => {
-    if (paramAgregar) setMostrarModal(true);
-  }, [paramAgregar]);
+    if (paramAgregar && puedeCrearAlumno) setMostrarModal(true);
+  }, [paramAgregar, puedeCrearAlumno]);
   const [mostrarDetalle, setMostrarDetalle] = useState(null);
   const [mostrarFicha, setMostrarFicha] = useState(null);
   const [mostrarHorario, setMostrarHorario] = useState(null);
@@ -254,7 +301,7 @@ const Alumnos = () => {
       const [divisionesMap, rawAmbito] = await Promise.all([
         cargarDivisiones().catch(() => null),
         apiAmbito().catch(() => ({ asignaciones: [] })),
-        refrescarAlumnos().catch((e) => setErrorCarga(e?.message || 'No se pudo cargar el padrón de alumnos.')),
+        refrescarAlumnos().catch((e) => setErrorCarga(mensajeAmable(e, 'No se pudo cargar el padrón de alumnos.'))),
       ]);
       if (cancel) return;
       try {
@@ -286,7 +333,7 @@ const Alumnos = () => {
   const actualizarTodo = async () => {
     if (!ready) return;
     const [, rawAmbito] = await Promise.all([
-      refrescarAlumnos().catch((e) => setErrorCarga(e?.message || 'No se pudo cargar el padrón de alumnos.')),
+      refrescarAlumnos().catch((e) => setErrorCarga(mensajeAmable(e, 'No se pudo cargar el padrón de alumnos.'))),
       apiAmbito().catch(() => null),
     ]);
     if (rawAmbito?.role) {
@@ -301,7 +348,7 @@ const Alumnos = () => {
   // en "0 alumnos" y la única salida era recargar el navegador.
   const reintentarCarga = async () => {
     setLoading(true);
-    try { await refrescarAlumnos(); } catch (e) { setErrorCarga(e?.message || 'No se pudo conectar con el servidor.'); }
+    try { await refrescarAlumnos(); } catch (e) { setErrorCarga(mensajeAmable(e, 'No se pudo conectar con el servidor.')); }
     setLoading(false);
   };
 
@@ -328,7 +375,9 @@ const Alumnos = () => {
 
     const okGen = filtroGenero === 'todos' || (a?.genero && a.genero.toUpperCase() === filtroGenero);
     const okEsp = filtroEspecialidad === 'todos' || (a?.especialidad ?? null) === filtroEspecialidad;
-    return okAnio && okGen && okEsp && ambitoOk;
+    // 'todos' no corta; un alumno sin estado guardado cursa, como en el resto del sistema.
+    const okEst = filtroEstado === 'todos' || estadoNormalizado(a) === filtroEstado;
+    return okAnio && okGen && okEsp && okEst && ambitoOk;
   };
 
   const alumnosFiltrados = useMemo(() => {
@@ -354,7 +403,7 @@ const Alumnos = () => {
     }
 
     return ordenarPersonas(filtrados, orden);
-  }, [alumnos, busquedaDebounced, filtroAnio, filtroGenero, filtroEspecialidad, ambito, role, orden]);
+  }, [alumnos, busquedaDebounced, filtroAnio, filtroGenero, filtroEspecialidad, filtroEstado, ambito, role, orden]);
 
   // Derivados de paginación a partir de alumnosFiltrados ya filtrado+ordenado
   const totalPaginas = Math.max(1, Math.ceil(alumnosFiltrados.length / POR_PAGINA));
@@ -363,7 +412,7 @@ const Alumnos = () => {
     [alumnosFiltrados, pagina]
   );
   // Resetea a página 1 cuando cambia cualquier filtro/búsqueda/orden
-  useEffect(() => { setPagina(1); }, [busqueda, filtroAnio, filtroGenero, filtroEspecialidad, orden]);
+  useEffect(() => { setPagina(1); }, [busqueda, filtroAnio, filtroGenero, filtroEspecialidad, filtroEstado, orden]);
   // Si el total se achica y la página queda fuera de rango, ajusta
   useEffect(() => { if (pagina > totalPaginas) setPagina(totalPaginas); }, [pagina, totalPaginas]);
 
@@ -373,12 +422,14 @@ const Alumnos = () => {
     (filtroAnio !== 'todos' ? 1 : 0) +
     (filtroGenero !== 'todos' ? 1 : 0) +
     (filtroEspecialidad !== 'todos' ? 1 : 0) +
+    (filtroEstado !== 'todos' ? 1 : 0) +
     (orden !== ORDEN_DEFAULT ? 1 : 0);
   const limpiarTodo = () => {
     setBusqueda('');
     setFiltroAnio('todos');
     setFiltroGenero('todos');
     setFiltroEspecialidad('todos');
+    setFiltroEstado(ESTADO_DEFAULT);
     setOrden(ORDEN_DEFAULT);
   };
 
@@ -409,6 +460,7 @@ const Alumnos = () => {
     if (pc.division) params.set('division', pc.division);
     if (filtroGenero !== 'todos') params.set('genero', filtroGenero);
     if (filtroEspecialidad !== 'todos') params.set('especialidad', filtroEspecialidad);
+    if (filtroEstado !== 'todos') params.set('estado', filtroEstado);
     params.set('orden', orden);
 
     const hoy = new Date();
@@ -440,15 +492,17 @@ const Alumnos = () => {
 
           <div className="alumnos-header-actions">
             {/* El padrón se baja en Excel, con todos los datos del expediente */}
-            <button
-              onClick={descargarPadron}
-              disabled={descargandoPadron}
-              className="alumnos-btn-download"
-              title="Descargar en Excel la lista que estás viendo"
-            >
-              <Download size={18} className="alumnos-btn-add-icon" />
-              {descargandoPadron ? 'Descargando...' : 'Descargar lista'}
-            </button>
+            {puedePadron && (
+              <button
+                onClick={descargarPadron}
+                disabled={descargandoPadron}
+                className="alumnos-btn-download"
+                title="Descargar en Excel la lista que estás viendo"
+              >
+                <Download size={18} className="alumnos-btn-add-icon" />
+                {descargandoPadron ? 'Descargando...' : 'Descargar lista'}
+              </button>
+            )}
             {/* Alta masiva: primero revisa la planilla, después escribe */}
             {puedeImportar && (
               <button
@@ -460,8 +514,7 @@ const Alumnos = () => {
                 Importar Excel
               </button>
             )}
-            {/* ⬇️ Ocultar botón si es PROFESOR */}
-            {!isProfesor && (
+            {puedeCrearAlumno && (
               <button
                 onClick={() => setMostrarModal(true)}
                 className="alumnos-btn-add"
@@ -538,6 +591,15 @@ const Alumnos = () => {
               </div>
 
               <div className="tb-field">
+                <span className="tb-field-label">Estado</span>
+                <DropdownMini
+                  value={filtroEstado} onChange={setFiltroEstado}
+                  placeholder="Todos" width="100%"
+                  opciones={ESTADOS_FILTRO}
+                />
+              </div>
+
+              <div className="tb-field">
                 <span className="tb-field-label">Ordenar</span>
                 <DropdownMini
                   value={orden} onChange={setOrden}
@@ -565,12 +627,6 @@ const Alumnos = () => {
           <div className="alumnos-loading">Cargando datos...</div>
         ) : (
           <>
-            {errorCarga && (
-              <div className="alumnos-error-carga" role="alert">
-                <span>{errorCarga}</span>
-                <button type="button" onClick={reintentarCarga}>Reintentar</button>
-              </div>
-            )}
             <ListaAlumnos
               alumnos={alumnosPaginados}
               onMostrarDetalle={setMostrarDetalle}
@@ -578,12 +634,14 @@ const Alumnos = () => {
               cursoTexto={filtroAnio !== 'todos' ? filtroAnio : null}
               hayBusqueda={busqueda.trim().length > 0}
               onLimpiarBusqueda={() => setBusqueda('')}
-              onAgregarAlumno={isProfesor ? undefined : () => setMostrarModal(true)}
+              onAgregarAlumno={puedeCrearAlumno ? () => setMostrarModal(true) : undefined}
               onOpenCronograma={setMostrarHorario}
               onGuardarHorario={(alumnoId, entradas) => {
                 setAlumnos(prev => prev.map(a => a.id === alumnoId ? { ...a, horarioPersonalizado: entradas } : a));
               }}
               puedeEditarAlumno={puedeEditarAlumno}
+              errorCarga={errorCarga}
+              onReintentar={reintentarCarga}
             />
             {alumnosFiltrados.length > 0 && (
               <div
@@ -635,6 +693,13 @@ const Alumnos = () => {
             setCache('alumnos/lista', next);
           }}
           onOpenCronograma={(a) => { setMostrarDetalle(null); setMostrarHorario(a); }}
+          permisosAlumno={{
+            editar: puedeEditarAlumno,
+            egresar: puedeEgresarAlumno,
+            inactivar: puedeInactivarAlumno,
+            eliminar: puedeEliminarAlumno,
+            horario: puedeHorarioAlumno,
+          }}
         />
 
         {/* Ficha de solo lectura (mismo diseño que profesores/preceptores) */}
@@ -648,7 +713,7 @@ const Alumnos = () => {
         <HorarioAlumnoModal
           visible={!!mostrarHorario}
           alumno={mostrarHorario}
-          soloLectura={!!mostrarHorario && !puedeEditarAlumno(mostrarHorario)}
+          soloLectura={!!mostrarHorario && !puedeHorarioAlumno(mostrarHorario)}
           onClose={() => setMostrarHorario(null)}
           onGuardar={(alumnoId, entradas) => {
             setAlumnos(prev => prev.map(a => a.id === alumnoId ? { ...a, horarioPersonalizado: entradas } : a));

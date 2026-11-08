@@ -10,8 +10,11 @@ import useAviso from "../../compartido/componentes/modals/useAviso";
 import "./Login.css";
 
 // Destino seguro tras login: solo rutas internas (evita redirección abierta).
+// El navegador lee "/\evil.com" igual que "//evil.com", así que la barra
+// invertida también corta el desvío.
 const destinoSeguro = (to) => {
-  if (typeof to !== "string" || !to.startsWith("/") || to.startsWith("//")) return "/";
+  if (typeof to !== "string") return "/";
+  if (!to.startsWith("/") || to.includes("\\") || to.startsWith("//")) return "/";
   return to;
 };
 
@@ -24,7 +27,7 @@ const page = {
 
 // Componente principal de inicio de sesion
 export default function Login() {
-  const { login } = useAuth();
+  const { login, errorSesion, verificarSesion } = useAuth();
   const nav = useNavigate();
   const [params] = useSearchParams();
 
@@ -125,6 +128,15 @@ export default function Login() {
                   <h1 className="auth-heading-title">Iniciar sesión</h1>
                   <div className="auth-heading-bar" />
                 </div>
+
+                {/* La sesión sigue guardada pero la API no respondió: se avisa
+                    acá en vez de borrar el token y exigir la contraseña. */}
+                {errorSesion && (
+                  <div className="auth-session-note" role="status">
+                    <div>{errorSesion}</div>
+                    <button type="button" onClick={verificarSesion}>Reintentar</button>
+                  </div>
+                )}
 
                 <div className="auth-fields">
                   {/* Email */}

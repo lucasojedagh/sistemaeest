@@ -101,10 +101,13 @@ services:
     ports:
       # Antes publicaba el dev server de Vite (5173); ahora expone el build
       # estático (puerto 80 interno) solo para revisar el contenedor por
-      # separado. El acceso real del colegio es el nginx de arriba (:8000).
+      # separado, y sólo desde el propio server: por ese puerto no hay /api
+      # (lo resuelve el nginx de arriba), así que en la red del colegio sería
+      # una segunda entrada que abre la pantalla y no puede hablar con la base.
+      # El acceso real del colegio es el nginx de arriba (:8000).
       # Si levantas `npm run dev` en la máquina para desarrollar, no subas este
       # servicio a la vez: los dos quieren el puerto 5173 del host.
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     # Sin volúmenes: el `dist` va DENTRO de la imagen (lo genera la etapa build
     # del Dockerfile). Montar ./frontend sería un error de producción: el código
     # fuente quedaría editable en caliente y el nginx interno no leería de ahí.

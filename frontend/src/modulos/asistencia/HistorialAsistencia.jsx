@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import useAviso from "../../compartido/componentes/modals/useAviso";
 import { History, Loader, Search, User2, Users, Download } from "lucide-react";
 import { asistenciaApi } from "../../compartido/api/asistencia";
@@ -12,7 +12,7 @@ import EmptyState from "../../compartido/componentes/Common/EmptyState";
 import { mensajeAmable } from "../../compartido/lib/errores";
 import "./HistorialAsistencia.css";
 
-export default function HistorialAsistencia({ maps }) {
+export default function HistorialAsistencia({ maps, initial }) {
   const showToast = useToast();
   const [modo, setModo] = useState("curso");
   const [curso, setCurso] = useState({ anio: 1, division: "" });
@@ -23,7 +23,10 @@ export default function HistorialAsistencia({ maps }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [buscado, setBuscado] = useState(false);
+  // "Ver faltas" desde Inasistencias: se cargan los filtros y la búsqueda sola.
+  const [buscarSolo, setBuscarSolo] = useState(false);
   const [mostrarAviso, , avisoModal] = useAviso();
+  const version = useRef(0);
 
   const cursoOk = curso.anio && curso.division && curso.division !== "*";
 
@@ -42,22 +45,49 @@ export default function HistorialAsistencia({ maps }) {
     setLoading(true);
     setError(null);
     setBuscado(true);
+    // Última respuesta gana: cambiando de curso rápido, el pedido del curso
+    // anterior podía escribirse encima del nuevo resultado.
+    const mia = ++version.current;
     try {
-      setData(await asistenciaApi.historial(params));
+      const d = await asistenciaApi.historial(params);
+      if (mia === version.current) setData(d);
     } catch (e) {
+      if (mia !== version.current) return;
       setError(mensajeAmable(e, "No se pudo consultar el historial. Revisá tu conexión."));
       setData(null);
     } finally {
-      setLoading(false);
+      if (mia === version.current) setLoading(false);
     }
   }
+
+  // El pedido de Inasistencias se aplica una sola vez por alumno: si se vuelve
+  // a la pestaña, no se pisa lo que se cambió a mano.
+  const pedidoAplicado = useRef(null);
+  useEffect(() => {
+    if (!initial?.dni) return;
+    const firma = `${initial.dni}|${initial.desde || ""}`;
+    if (pedidoAplicado.current === firma) return;
+    pedidoAplicado.current = firma;
+    setModo("alumno");
+    setAlumnoDni(String(initial.dni).replace(/\D/g, ""));
+    if (initial.desde) setDesde(String(initial.desde));
+    setHasta(hoyLocal());
+    setBuscarSolo(true);
+  }, [initial]);
+
+  useEffect(() => {
+    if (!buscarSolo) return;
+    setBuscarSolo(false);
+    buscar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscarSolo]);
 
   const resumenCards = (r) => [
     ["Clases dictadas", r?.clases_dictadas ?? 0],
     ["Presentes", r?.presentes ?? 0],
     ["Ausentes", r?.ausentes ?? 0],
-    ["Justificadas", r?.justificados ?? 0],
-    ["Tardanzas", r?.tardanzas ?? 0],
+    ["Con justificativo", r?.justificados ?? 0],
+    ["Llegadas tarde", r?.tardanzas ?? 0],
     ["% asistencia", fmtPct(r?.porcentaje)],
   ];
 
@@ -98,6 +128,16 @@ export default function HistorialAsistencia({ maps }) {
     showToast(mensajeDescarga(nombre), "success");
   }
 
+  // Cambiar de consulta descarta lo que está en vuelo: sin esto, la respuesta
+  // del curso anterior terminaba escribiéndose encima de la pantalla nueva.
+  const descartar = () => {
+    version.current++;
+    setData(null);
+    setError(null);
+    setLoading(false);
+    setBuscado(false);
+  };
+
   return (
     <div className="hist-container">
       <div className="hist-filters-card">
@@ -107,14 +147,14 @@ export default function HistorialAsistencia({ maps }) {
             <div className="hist-segmented">
               <button
                 type="button"
-                onClick={() => { setModo("curso"); setData(null); }}
+                onClick={() => { setModo("curso"); descartar(); }}
                 className={`hist-seg-btn ${modo === "curso" ? "hist-seg-btn-active" : "hist-seg-btn-inactive"}`}
               >
                 <Users className="hist-seg-icon" /> Por curso
               </button>
               <button
                 type="button"
-                onClick={() => { setModo("alumno"); setData(null); }}
+                onClick={() => { setModo("alumno"); descartar(); }}
                 className={`hist-seg-btn ${modo === "alumno" ? "hist-seg-btn-active" : "hist-seg-btn-inactive"}`}
               >
                 <User2 className="hist-seg-icon" /> Por alumno
@@ -132,6 +172,7 @@ export default function HistorialAsistencia({ maps }) {
               <input
                 value={alumnoDni}
                 onChange={(e) => setAlumnoDni(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                onKeyDown={(e) => e.key === "Enter" && buscar()}
                 placeholder="Ej: 40123456"
                 inputMode="numeric"
                 className="hist-input-alumno"
@@ -179,6 +220,11 @@ export default function HistorialAsistencia({ maps }) {
 
       {!loading && !error && data && (
         <>
+          {data.recortado && (
+            <div className="asist-nota">
+              {`Con ese filtro hay ${data.total_filas} marcas. Los totales y porcentajes están calculados sobre todas; la lista de abajo muestra las ${(data.detalle || []).length} más recientes.`}
+            </div>
+          )}
           {data.tipo === "alumno" ? (
             <>
               <div className="hist-alumno-card">
@@ -210,11 +256,11 @@ export default function HistorialAsistencia({ maps }) {
                         <th className="hist-th">Apellido</th>
                         <th className="hist-th">Nombre</th>
                         <th className="hist-th">DNI</th>
-                        <th className="hist-th">Clases</th>
-                        <th className="hist-th">P</th>
-                        <th className="hist-th">A</th>
-                        <th className="hist-th">J</th>
-                        <th className="hist-th">T</th>
+                        <th className="hist-th">Clases relevadas</th>
+                        <th className="hist-th">Presentes</th>
+                        <th className="hist-th">Ausentes</th>
+                        <th className="hist-th">Con justificativo</th>
+                        <th className="hist-th">Con tardanza</th>
                         <th className="hist-th">% asistencia</th>
                       </tr>
                     </thead>
@@ -275,6 +321,10 @@ function DetalleTable({ rows }) {
       <div className="hist-table-title">
         Detalle por fecha
       </div>
+      <p className="hist-criterio">
+        El % de asistencia es (presentes + tardanzas) sobre las clases relevadas: llegar
+        tarde no es falta. El justificativo sí cuenta como falta, aunque tenga motivo aprobado.
+      </p>
       <div className="hist-table-wrap">
         <table className="hist-table">
           <thead>
